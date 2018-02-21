@@ -22,23 +22,23 @@ def play():
                                kerning = 5, fontsize=100).set_pos('center').set_duration(2)
             clips.append(CompositeVideoClip([txtClip], size=screensize))
         
-        if len(clips) > 0:
-            cvc = concatenate_videoclips(clips)
-            cvc.preview()
+        return clips
 
     except KeyboardInterrupt:
         tracking.stop()
 
 def on_press(key):
-	# I can't get space and esc to work, so i'm using left and right shift instead for play and exit.
-    if key == keyboard.Key.shift_l:
+	if key == keyboard.Key.space:
         print "hi"
-        play()
+        clips = play()
+        if len(clips) > 0:
+            cvc = concatenate_videoclips(clips)
+            cvc.preview()
 
 def on_release(key):
     print('{0} released'.format(
         key))
-    if key == keyboard.Key.shift_r:
+    if key == keyboard.Key.esc:
         # Stop listener
         return False
 
@@ -46,10 +46,11 @@ tracking = tuio.Tracking()
 print "loaded profiles:", tracking.profiles.keys()
 print "list functions to access tracked objects:", tracking.get_helpers()
 
-with keyboard.Listener(
-        on_press=on_press,
-        on_release=on_release) as listener:
-    listener.join()
+while True:
+    with keyboard.Listener(
+            on_press=on_press,
+            on_release=on_release) as listener:
+        listener.join()
 
 
 #clip = VideoFileClip("videoviewdemo.mp4")
