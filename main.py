@@ -42,15 +42,16 @@ def save():
 
 def on_press(key):
     # I can't get space and esc to work, so i'm using left and right shift instead for play and exit.
-    if key == keyboard.Key.shift_l:
+    if key == keyboard.Key.space:
         play()
-    if key == keyboard.Key.alt_l:
+    print key
+    if hasattr(key, 'char') and key.char == 's':
         save()
 
 def on_release(key):
     print('{0} released'.format(
         key))
-    if key == keyboard.Key.shift_r:
+    if key == keyboard.Key.esc:
         # Stop listener
         return False
 
