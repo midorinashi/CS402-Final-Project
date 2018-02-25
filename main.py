@@ -64,9 +64,6 @@ def concatenate(clipFromPointer=False):
                 if obj.id <= len(importedClipNames):
                     # the first imported clip is associated with fiducial 1 since 0 is the seeker
                     fileClip = VideoFileClip(importedClipNames[obj.id - 1])
-                    print fileClip.audio
-                    if fileClip.audio != None:
-                        print fileClip.audio.fps
                     clips.append(fileClip)
                 else:
                     txtClip = TextClip(str(obj.id),color='white', font="Amiri-Bold",
@@ -82,6 +79,9 @@ def concatenate(clipFromPointer=False):
         #concatenate all clips
         if len(clips) > 0:
             cvc = concatenate_videoclips(clips, method="compose")
+            #hack to get the audio working, apparently it doesn't copy audio fps properly
+            if cvc.audio != None:
+                cvc.audio.fps = 44100
             return cvc
 
     except KeyboardInterrupt:
@@ -90,15 +90,14 @@ def concatenate(clipFromPointer=False):
 
 def play():
     clip = concatenate(clipFromPointer=True)
-    print clip
     if clip != None:
-        print "previewing"
         clip.preview()
 
 
 def save():
     clip = concatenate()
     if clip != None:
+        #the default video file encodes audio in a way quicktime won't play, so we add these params
         clip.write_videofile("video.mp4", codec="libx264", temp_audiofile='temp-audio.m4a', remove_temp=True, audio_codec='aac')
 
 
