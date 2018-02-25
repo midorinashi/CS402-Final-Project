@@ -8,7 +8,37 @@ from moviepy.editor import *
 import tuio
 from pynput import keyboard
 
+import os, glob, time
+
+
 POINTER_OFFSET = 0.036
+
+importedClipNames = [] # clip names in the import folder from oldest to newest add date
+
+# credit to https://www.daniweb.com/programming/software-development/code/216688/file-list-by-date-python
+def importClips():
+    date_file_list = []
+    for file in glob.glob("./imports/*.*"):
+        # retrieves the stats for the current file as a tuple
+        # (mode, ino, dev, nlink, uid, gid, size, atime, mtime, ctime)
+        # the tuple element mtime at index 8 is the last-modified-date
+        stats = os.stat(file)
+        # create tuple (year yyyy, month(1-12), day(1-31), hour(0-23), minute(0-59), second(0-59),
+        # weekday(0-6, 0 is monday), Julian day(1-366), daylight flag(-1,0 or 1)) from seconds since epoch
+        # note:  this tuple can be sorted properly by date and time
+        lastmod_date = time.localtime(stats[8])
+        # create list of tuples ready for sorting by date
+        date_file_tuple = lastmod_date, file
+        date_file_list.append(date_file_tuple)
+
+    date_file_list.sort() # oldest video first
+    for file in date_file_list:
+        file_name = file[1]
+        # add the clip if the name is new
+        if file_name not in importedClipNames:
+            importedClipNames.append(file_name)
+    print "There are ", len(importedClipNames), " imported clips."
+    print importedClipNames
 
 def concatenate(clipFromPointer=False):
     try:
@@ -23,26 +53,35 @@ def concatenate(clipFromPointer=False):
 
         clips = []
         xposes = []
-        startxpos = -1 # 28 indicates which clip to start with
+        startxpos = -1 # 0 indicates which clip to start with
 
         for obj in objects:
             #print obj, obj.xpos, obj.ypos, "hi"
-            if obj.id == 28:
+            if obj.id == 0:
                 startxpos = obj.xpos
+            #if the fiducial has a clip associated with it
             else:
-                txtClip = TextClip(str(obj.id),color='white', font="Amiri-Bold",
-                                   kerning = 5, fontsize=100).set_pos('center').set_duration(2)
-                clips.append(CompositeVideoClip([txtClip], size=screensize))
+                if obj.id <= len(importedClipNames):
+                    # the first imported clip is associated with fiducial 1 since 0 is the seeker
+                    fileClip = VideoFileClip(importedClipNames[obj.id - 1])
+                    print fileClip.audio
+                    if fileClip.audio != None:
+                        print fileClip.audio.fps
+                    clips.append(fileClip)
+                else:
+                    txtClip = TextClip(str(obj.id),color='white', font="Amiri-Bold",
+                                       kerning = 5, fontsize=100).set_pos('center').set_duration(2)
+                    clips.append(CompositeVideoClip([txtClip], size=screensize).set_fps(25))
                 xposes.append(obj.xpos)
 
-        #when playing, play starting from fiducial 28 if it's on the screen
+        #when playing, play starting from fiducial 0 if it's on the screen
         if clipFromPointer and startxpos != -1:
             clips = [clip for xpos,clip in zip(xposes,clips) if xpos > startxpos - POINTER_OFFSET]
         print len(clips), xposes
 
         #concatenate all clips
         if len(clips) > 0:
-            cvc = concatenate_videoclips(clips)
+            cvc = concatenate_videoclips(clips, method="compose")
             return cvc
 
     except KeyboardInterrupt:
@@ -51,22 +90,27 @@ def concatenate(clipFromPointer=False):
 
 def play():
     clip = concatenate(clipFromPointer=True)
+    print clip
     if clip != None:
+        print "previewing"
         clip.preview()
 
 
 def save():
     clip = concatenate()
     if clip != None:
-        clip.write_videofile("video.mp4",fps=25,codec='mpeg4')
+        clip.write_videofile("video.mp4", codec="libx264", temp_audiofile='temp-audio.m4a', remove_temp=True, audio_codec='aac')
 
 
 def on_press(key):
     if key == keyboard.Key.space:
         play()
     print key, 'pressed'
-    if hasattr(key, 'char') and key.char == 's':
-        save()
+    if hasattr(key, 'char'):
+        if key.char == 's':
+            save()
+        if key.char == 'i':
+            importClips()
 
 def on_release(key):
     print key, 'released'
