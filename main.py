@@ -4,6 +4,7 @@ imageio.plugins.ffmpeg.download()
 import matplotlib
 matplotlib.use('TkAgg')
 from moviepy.editor import *
+import moviepy.video.fx.all as vfx
 
 import tuio
 from pynput import keyboard
@@ -65,7 +66,9 @@ def applyEffects(effectObjs, clips, clipObjs):
             #if the effect fiducial looks like it's in line with the given clip objects
             if effectObj.xpos >= clipObj.xpos - POINTER_OFFSET and \
                     effectObj.xpos <= clipObj.xpos + POINTER_OFFSET:
-                if effectObj.id >= 1 and effectObj.id < 6:
+                if effectObj.id == 1:
+                    clips[index] = clips[index].fx(vfx.time_mirror)
+                if effectObj.id >= 2 and effectObj.id < 6:
                     clips[index] = changeSpeed(effectObj, clips[index])
 
 def concatenate(clipFromPointer=False):
