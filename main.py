@@ -59,6 +59,17 @@ def changeSpeed(effectObj, clip):
     #if it's basically pointing down, don't do anything - unclear what they want
     return clip.speedx(speed)
 
+def changeBrightness(effectObj, clip):
+    brightness = (effectObj.angle / 360) * 1.5
+    return clip.fx(vfx.colorx, brightness)
+
+# could be replaced by fiducial glove
+def trimClip(effectObj, clip):
+    if effectObj.angle < 180:
+        return clip.subclip((effectObj.angle / 180.0) * clip.duration, clip.duration)
+    return clip.subclip(0, ((effectObj.angle - 180) / 180.0) * clip.duration)
+
+
 def applyEffects(effectObjs, clips, clipObjs):
     for effectObj in effectObjs:
         for index in range(len(clipObjs)):
@@ -68,8 +79,14 @@ def applyEffects(effectObjs, clips, clipObjs):
                     effectObj.xpos <= clipObj.xpos + POINTER_OFFSET:
                 if effectObj.id == 1:
                     clips[index] = clips[index].fx(vfx.time_mirror)
-                if effectObj.id >= 2 and effectObj.id < 6:
+                if effectObj.id == 2:
                     clips[index] = changeSpeed(effectObj, clips[index])
+                if effectObj.id == 3:
+                    clips[index] = changeBrightness(effectObj, clips[index])
+                if effectObj.id == 4:
+                    clips[index] = trimClip(effectObj, clips[index])
+                # if effectObj.id >=4 and effectObj.id < 6:
+                #    clips[index] = addText(effectObj, clips[index])
 
 def concatenate(clipFromPointer=False):
     try:
@@ -88,7 +105,6 @@ def concatenate(clipFromPointer=False):
         startxpos = -1 # 0 indicates which clip to start with
 
         for obj in objects:
-            #print obj, obj.xpos, obj.ypos, "hi"
             if obj.id == 0:
                 startxpos = obj.xpos
             #if the fiducial has a clip associated with it
