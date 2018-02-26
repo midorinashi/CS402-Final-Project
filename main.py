@@ -12,6 +12,7 @@ import os, glob, time
 
 
 POINTER_OFFSET = 0.036
+effectsFiducialIds = range(1, 6)
 
 importedClipNames = [] # clip names in the import folder from oldest to newest add date
 
@@ -40,6 +41,33 @@ def importClips():
     print "There are ", len(importedClipNames), " imported clips."
     print importedClipNames
 
+#speeds up clips by up to a factor of 4 and slows down clips down to a factor of 0.25
+def changeSpeed(effectObj, clip):
+    print "angle", effectObj.angle
+    # 0 degrees indicates normal speed
+    speed = 1
+    #slow down - 225, 270, and 315 degrees are .25, .5, and .75 respectively
+    if effectObj.angle >= 225:
+        speed = (effectObj.angle - 180) / 180.0
+    #speed up - 45, 90, and 135 degrees are 1.5, 2, and 4 respectively
+    #note that between 1 and 2 it goes up by .5 per 45 degrees and between 2 and 4 it scales differently
+    elif effectObj.angle < 90:
+        speed = (effectObj.angle / 90.0) + 1
+    elif effectObj.angle <= 135:
+        speed = (effectObj.angle - 90) / 22.5 + 2
+    #if it's basically pointing down, don't do anything - unclear what they want
+    return clip.speedx(speed)
+
+def applyEffects(effectObjs, clips, clipObjs):
+    for effectObj in effectObjs:
+        for index in range(len(clipObjs)):
+            clipObj = clipObjs[index]
+            #if the effect fiducial looks like it's in line with the given clip objects
+            if effectObj.xpos >= clipObj.xpos - POINTER_OFFSET and \
+                    effectObj.xpos <= clipObj.xpos + POINTER_OFFSET:
+                if effectObj.id >= 1 and effectObj.id < 6:
+                    clips[index] = changeSpeed(effectObj, clips[index])
+
 def concatenate(clipFromPointer=False):
     try:
         #haxx to ensure the TUIO message is fresh - sometimes it's not??
@@ -52,7 +80,8 @@ def concatenate(clipFromPointer=False):
         print 'clip order:', [obj.id for obj in objects]
 
         clips = []
-        xposes = []
+        clipObjs = []
+        effectObjs = []
         startxpos = -1 # 0 indicates which clip to start with
 
         for obj in objects:
@@ -60,21 +89,27 @@ def concatenate(clipFromPointer=False):
             if obj.id == 0:
                 startxpos = obj.xpos
             #if the fiducial has a clip associated with it
+            elif obj.id <= len(effectsFiducialIds):
+                effectObjs.append(obj)
+
+                print "id", obj.id, "angle", obj.angle
             else:
-                if obj.id <= len(importedClipNames):
+                if obj.id <= len(importedClipNames) + len(effectsFiducialIds):
                     # the first imported clip is associated with fiducial 1 since 0 is the seeker
-                    fileClip = VideoFileClip(importedClipNames[obj.id - 1])
+                    fileClip = VideoFileClip(importedClipNames[obj.id - 1 - len(effectsFiducialIds)])
                     clips.append(fileClip)
                 else:
                     txtClip = TextClip(str(obj.id),color='white', font="Amiri-Bold",
                                        kerning = 5, fontsize=100).set_pos('center').set_duration(2)
                     clips.append(CompositeVideoClip([txtClip], size=screensize).set_fps(25))
-                xposes.append(obj.xpos)
+                clipObjs.append(obj)
 
         #when playing, play starting from fiducial 0 if it's on the screen
         if clipFromPointer and startxpos != -1:
-            clips = [clip for xpos,clip in zip(xposes,clips) if xpos > startxpos - POINTER_OFFSET]
-        print len(clips), xposes
+            clips = [clip for obj,clip in zip(clipObjs,clips) if obj.xpos > startxpos - POINTER_OFFSET]
+        print len(clips)
+
+        applyEffects(effectObjs, clips, clipObjs)
 
         #concatenate all clips
         if len(clips) > 0:
