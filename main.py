@@ -13,6 +13,7 @@ import os, glob, time
 
 
 POINTER_OFFSET = 0.036
+screensize = (720,460)
 effectsFiducialIds = range(1, 6)
 
 importedClipNames = [] # clip names in the import folder from oldest to newest add date
@@ -69,6 +70,13 @@ def trimClip(effectObj, clip):
         return clip.subclip((effectObj.angle / 180.0) * clip.duration, clip.duration)
     return clip.subclip(0, ((effectObj.angle - 180) / 180.0) * clip.duration)
 
+# currently adds text to bottom of video based on keyboard input
+# ugh
+def addText(effectObj, clip):
+    text = raw_input("Describe this scene: ")
+    txtClip = TextClip(text, color='white', font="Amiri-Bold",
+                                       kerning = 4, fontsize=20).set_pos('bottom').set_duration(clip.duration)
+    return CompositeVideoClip([clip, txtClip])
 
 def applyEffects(effectObjs, clips, clipObjs):
     for effectObj in effectObjs:
@@ -85,17 +93,16 @@ def applyEffects(effectObjs, clips, clipObjs):
                     clips[index] = changeBrightness(effectObj, clips[index])
                 if effectObj.id == 4:
                     clips[index] = trimClip(effectObj, clips[index])
-                # if effectObj.id >=4 and effectObj.id < 6:
-                #    clips[index] = addText(effectObj, clips[index])
+                if effectObj.id == 5:
+                    clips[index] = addText(effectObj, clips[index])
 
 def concatenate(clipFromPointer=False):
     try:
         #haxx to ensure the TUIO message is fresh - sometimes it's not??
-        for i in range(50):
+        for i in range(100):
             tracking.update()
 
         print sum(1 for _ in tracking.objects()),'clips found!'
-        screensize = (720,460)
         objects = sorted(tracking.objects(), key=lambda x: x.xpos)
         print 'clip order:', [obj.id for obj in objects]
 
