@@ -1,5 +1,6 @@
 import imageio
 imageio.plugins.ffmpeg.download()
+import graphics as g
 
 import matplotlib
 matplotlib.use('TkAgg')
@@ -9,8 +10,10 @@ import moviepy.video.fx.all as vfx
 import tuio
 from pynput import keyboard
 
-import os, glob, time
+import os, glob, time, sys
 
+CANVAS_WIDTH = 500
+CANVAS_HEIGHT = 500
 
 POINTER_OFFSET = 0.036
 screensize = (720,460)
@@ -110,6 +113,8 @@ def concatenate(clipFromPointer=False):
         clipObjs = []
         effectObjs = []
         startxpos = -1 # 0 indicates which clip to start with
+        prevxpos = 0
+        prevypos = CANVAS_HEIGHT / 2.0
 
         for obj in objects:
             if obj.id == 0:
@@ -129,6 +134,16 @@ def concatenate(clipFromPointer=False):
                                        kerning = 5, fontsize=100).set_pos('center').set_duration(2)
                     clips.append(CompositeVideoClip([txtClip], size=screensize).set_fps(25))
                 clipObjs.append(obj)
+                # draw to canvas
+                video = g.Rectangle(g.Point(obj.xpos * CANVAS_WIDTH, obj.ypos * CANVAS_HEIGHT), g.Point(obj.xpos * CANVAS_WIDTH + 50, obj.ypos * CANVAS_HEIGHT + 50))
+                video.setFill('bisque')
+                video.draw(win)
+                line = g.Line(g.Point(prevxpos + 50, prevypos + 25), g.Point(obj.xpos * CANVAS_WIDTH, obj.ypos * CANVAS_HEIGHT + 25))
+                prevxpos = obj.xpos * CANVAS_WIDTH
+                prevypos = obj.ypos * CANVAS_HEIGHT
+                line.setArrow('last')
+                line.setFill('gold')
+                line.draw(win)
 
         #when playing, play starting from fiducial 0 if it's on the screen
         if clipFromPointer and startxpos != -1:
@@ -163,29 +178,39 @@ def save():
 
 
 def on_press(key):
-    if key == keyboard.Key.space:
+    if key.char == ' ':
+        for item in win.items[:]:
+            item.undraw()
+        win.update()
         play()
-    print key, 'pressed'
-    if hasattr(key, 'char'):
-        if key.char == 's':
-            save()
-        if key.char == 'i':
-            importClips()
-
-def on_release(key):
-    print key, 'released'
-    if key == keyboard.Key.esc:
+    if key.char == '\x1b':
         # Stop listener
         print 'Goodbye!'
-        return False
+        sys.exit(0)
+    print repr(key.char), 'pressed'
+    # if hasattr(key, 'char'):
+    if key.char == 's':
+        save()
+    if key.char == 'i':
+        importClips()
+
+# def on_release(key):
+#     print key.char, 'released'
+#     if repr(key.char) == "\'\x1b\'":
+#         # Stop listener
+#         print 'Goodbye!'
+#         return False
 
 tracking = tuio.Tracking()
 print "loaded profiles:", tracking.profiles.keys()
 print "list functions to access tracked objects:", tracking.get_helpers()
 
-with keyboard.Listener(
-        on_press=on_press,
-        on_release=on_release) as listener:
-    listener.join()
+# listener = keyboard.Listener(
+#         on_press=on_press,
+#         on_release=on_release)
+# listener.start()
 
+win = g.GraphWin("prototype", 500, 500)
+win.bind_all("<Key>", on_press)
+g.root.mainloop()
 
