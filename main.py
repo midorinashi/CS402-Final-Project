@@ -10,14 +10,13 @@ import moviepy.video.fx.all as vfx
 import tuio
 from pynput import keyboard
 
-import os, glob, time, sys
+import os, glob, math, time, sys
 
 CANVAS_WIDTH = 500
 CANVAS_HEIGHT = 500
 
 POINTER_OFFSET = 0.036
 screensize = (720,460)
-effectsFiducialIds = range(1, 6)
 
 importedClipNames = [] # clip names in the import folder from oldest to newest add date
 
@@ -46,58 +45,137 @@ def importClips():
     print "There are ", len(importedClipNames), " imported clips."
     print importedClipNames
 
+#scales distance of a slider to a fraction from 0 to 1, where 0 is if the slider is all the way to the
+#left and 1 is where the slider is all the way to the right
+MINDISTANCE = .084
+MAXDISTANCE = .26
+def scaledDistance(obj1, obj2):
+    dist = math.sqrt((obj1.xpos - obj2.xpos) ** 2 + (obj1.ypos - obj2.ypos) ** 2)
+    scaledDist =  1 - (dist - MINDISTANCE) / (MAXDISTANCE - MINDISTANCE)
+    print "scaled distance", scaledDist
+    if scaledDist < 0:
+        return 0
+    elif scaledDist > 1:
+        return 1
+    return scaledDist
+
+def reverse(effectObjs, clip):
+    return clip.fx(vfx.time_mirror)
+
 #speeds up clips by up to a factor of 4 and slows down clips down to a factor of 0.25
-def changeSpeed(effectObj, clip):
-    print "angle", effectObj.angle
+def changeSpeed(effectObjs, clip):
     # 0 degrees indicates normal speed
     speed = 1
-    #slow down - 225, 270, and 315 degrees are .25, .5, and .75 respectively
-    if effectObj.angle >= 225:
-        speed = (effectObj.angle - 180) / 180.0
-    #speed up - 45, 90, and 135 degrees are 1.5, 2, and 4 respectively
+    val = scaledDistance(effectObjs[1], effectObjs[2])
+    #slow down - 0, .16, and .33 vals are .25, .5, and .75 respectively
+    if val < .5:
+        speed = (val * 3 / 2) + .25
+    #speed up - .66, .83, and 1 vals are 1.5, 2, and 4 respectively
     #note that between 1 and 2 it goes up by .5 per 45 degrees and between 2 and 4 it scales differently
-    elif effectObj.angle < 90:
-        speed = (effectObj.angle / 90.0) + 1
-    elif effectObj.angle <= 135:
-        speed = (effectObj.angle - 90) / 22.5 + 2
-    #if it's basically pointing down, don't do anything - unclear what they want
+    elif val < .83:
+        speed = ((val - .5) / .33) + 1
+    else:
+        speed = (val - .83) / .17 * 2 + 2
     return clip.speedx(speed)
 
-def changeBrightness(effectObj, clip):
-    brightness = (effectObj.angle / 360) * 1.5
+def changeBrightness(effectObjs, clip):
+    val = scaledDistance(effectObjs[1], effectObjs[2])
+    brightness = val * 1.5
     return clip.fx(vfx.colorx, brightness)
 
 # could be replaced by fiducial glove
-def trimClip(effectObj, clip):
-    if effectObj.angle < 180:
-        return clip.subclip((effectObj.angle / 180.0) * clip.duration, clip.duration)
-    return clip.subclip(0, ((effectObj.angle - 180) / 180.0) * clip.duration)
+def trimClip(effectObjs, clip):
+    startVal = scaledDistance(effectObjs[1], effectObjs[2])
+    endVal = scaledDistance(effectObjs[1], effectObjs[3])
+    return clip.subclip(startVal * clip.duration, endVal * clip.duration)
 
 # currently adds text to bottom of video based on keyboard input
 # ugh
-def addText(effectObj, clip):
+def addText(effectObjs, clip):
     text = raw_input("Describe this scene: ")
     txtClip = TextClip(text, color='white', font="Amiri-Bold",
                                        kerning = 4, fontsize=20).set_pos('bottom').set_duration(clip.duration)
     return CompositeVideoClip([clip, txtClip])
 
+
+'''
+All effects have at least two fiducials associated with it. (For now, we assume all fiducials are unique)
+Idea of what this looks like below. 1 and 2 are two different fiducials that don't move. 3 and 4 are 
+optional extra fiducials that can slide.
+
+Basic - for reverse      One slider          Two sliders
+ _______________       _______________     _______________    
+|1 ___________  |     |1 ___________  |   |1 ___________  |   
+| |           | |     | |           | |   | |           | |   
+| |           | |     | |           | |   | |           | |   
+| |           | |     | |           | |   | |           | |   
+| |           | |     | |           | |   | |           | |   
+| |___________| |     | |___________| |   | |___________| |   
+|              2|     |  --3-------- 2|   |  ---3----4-- 2|   
+|_______________|     |_______________|   |_______________|   
+'''
+
+effectsFunctions = [reverse, changeSpeed, changeBrightness, trimClip, addText]
+fiducialsPerFunction = [2, 3, 3, 4, 2]
+numEffectsIds = sum(fiducialsPerFunction)
+
+def findClipIndexInsideEffectBlock(currEffectObjs, clipObjs):
+    top = currEffectObjs[0].ypos
+    left = currEffectObjs[0].xpos
+    bottom = currEffectObjs[1].ypos
+    right = currEffectObjs[1].xpos
+
+    #if the block has been rotated more than 180, make the lesser values top/left
+    if top > bottom:
+        top, bottom = bottom, top
+    if left > right:
+        left, right = right, left
+
+    #if the blocks are rotated such that the fiducials are horizontal or vertical to each other,
+    #allow some extra space to sense the clip object
+    THRESHOLD = .02
+    EXTRASPACE = .05
+    if bottom - top < THRESHOLD:
+        top -= EXTRASPACE
+        bottom += EXTRASPACE
+    if right - left < THRESHOLD:
+        left -= EXTRASPACE
+        right += EXTRASPACE
+
+    for index in range(len(clipObjs)):
+        clipObj = clipObjs[index]
+        print top, clipObj.ypos, bottom, left, clipObj.xpos, right
+        if top <= clipObj.ypos <= bottom and left <= clipObj.xpos <= right:
+            return index
+    return None
+
 def applyEffects(effectObjs, clips, clipObjs):
-    for effectObj in effectObjs:
-        for index in range(len(clipObjs)):
-            clipObj = clipObjs[index]
-            #if the effect fiducial looks like it's in line with the given clip objects
-            if effectObj.xpos >= clipObj.xpos - POINTER_OFFSET and \
-                    effectObj.xpos <= clipObj.xpos + POINTER_OFFSET:
-                if effectObj.id == 1:
-                    clips[index] = clips[index].fx(vfx.time_mirror)
-                if effectObj.id == 2:
-                    clips[index] = changeSpeed(effectObj, clips[index])
-                if effectObj.id == 3:
-                    clips[index] = changeBrightness(effectObj, clips[index])
-                if effectObj.id == 4:
-                    clips[index] = trimClip(effectObj, clips[index])
-                if effectObj.id == 5:
-                    clips[index] = addText(effectObj, clips[index])
+    effectObjIds = [effectObj.id for effectObj in effectObjs]
+    print effectObjIds
+    startId = 1 # tracks what's the first fiducial id associated with an effect, first effect fiducial is 1
+
+    if len(effectsFunctions) != len(fiducialsPerFunction):
+        print "Effect functions are not properly assigned fiducials"
+        return
+
+    for effectIndex in range(len(effectsFunctions)):
+        currEffectObjs = []
+        for fiducialId in range(startId, startId + fiducialsPerFunction[effectIndex]):
+            #if not all fiducial Ids are 
+            if fiducialId in effectObjIds:
+                currEffectObjs.append(effectObjs[effectObjIds.index(fiducialId)])
+            else:
+                break
+        else:
+            print "all clips on screen for effect ", effectIndex
+            print currEffectObjs
+            clipIndex = findClipIndexInsideEffectBlock(currEffectObjs, clipObjs)
+            if clipIndex != None:
+                print "applying ", effectIndex, " effect to clip id ", clipObjs[clipIndex].id
+                clips[clipIndex] = effectsFunctions[effectIndex](currEffectObjs, clips[clipIndex])
+        startId += fiducialsPerFunction[effectIndex]
+
+
 
 def concatenate(clipFromPointer=False):
     try:
@@ -120,14 +198,14 @@ def concatenate(clipFromPointer=False):
             if obj.id == 0:
                 startxpos = obj.xpos
             #if the fiducial has a clip associated with it
-            elif obj.id <= len(effectsFiducialIds):
+            elif obj.id <= numEffectsIds:
                 effectObjs.append(obj)
 
                 print "id", obj.id, "angle", obj.angle
             else:
-                if obj.id <= len(importedClipNames) + len(effectsFiducialIds):
+                if obj.id <= len(importedClipNames) + numEffectsIds:
                     # the first imported clip is associated with fiducial 1 since 0 is the seeker
-                    fileClip = VideoFileClip(importedClipNames[obj.id - 1 - len(effectsFiducialIds)])
+                    fileClip = VideoFileClip(importedClipNames[obj.id - 1 - numEffectsIds])
                     clips.append(fileClip)
                 else:
                     txtClip = TextClip(str(obj.id),color='white', font="Amiri-Bold",
