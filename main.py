@@ -118,6 +118,7 @@ Basic - for reverse      One slider          Two sliders
 
 effectsFunctions = [reverse, changeSpeed, changeBrightness, trimClip, addText]
 fiducialsPerFunction = [2, 3, 3, 4, 2]
+colorForFunction = ['navy blue', 'dark green', 'dark slate gray', 'red4', 'gold4']
 numEffectsIds = sum(fiducialsPerFunction)
 
 def findClipIndexInsideEffectBlock(currEffectObjs, clipObjs):
@@ -176,21 +177,59 @@ def updateEffects(effectObjs, clipObjs):
                 fiducialId = clipObjs[clipIndex].id
                 # print "applying ", effectIndex, " effect to clip id ", clipObjs[clipIndex].id
                 if fiducialId not in effectsForClips:
-                    effectsForClips[fiducialId] = {}
-                effectsForClips[fiducialId][effectsFunctions[effectIndex]] = currEffectObjs
+                    effectsForClips[fiducialId] = []
+                for index in range(len(effectsForClips[fiducialId])):
+                    if effectsForClips[fiducialId][index]['func'] == effectsFunctions[effectIndex]:
+                        del effectsForClips[fiducialId][index]
+                        break
+                effectsForClips[fiducialId].append({'func': effectsFunctions[effectIndex],
+                                                    'effectObjs': currEffectObjs})
         startId += fiducialsPerFunction[effectIndex]
 
 def applyEffects(clips, clipObjs):
     print "effectsForClips:", effectsForClips
     for clipIndex in range(len(clipObjs)):
-        fiducialId = clipObjs[clipIndex].id
+        clipObj = clipObjs[clipIndex]
+        fiducialId = clipObj.id
         if fiducialId in effectsForClips:
-            effectDict = effectsForClips[fiducialId]
-            for f in effectsFunctions:
-                if f in effectDict:
-                    effectObjs = effectDict[f]
-                    print f, effectObjs, clips[clipIndex]
-                    clips[clipIndex] = f(effectObjs, clips[clipIndex])
+            effectArray = effectsForClips[fiducialId]
+            effectIndex = len(effectArray)
+            for entry in effectArray:
+                f = entry['func']
+                effectObjs = entry['effectObjs']
+                # print f, effectObjs, clips[clipIndex]
+                clips[clipIndex] = f(effectObjs, clips[clipIndex])
+
+                functionIndex = effectsFunctions.index(f)
+                borderSize = 10 * effectIndex
+                border = g.Rectangle(g.Point(clipObj.xpos * CANVAS_WIDTH - borderSize,
+                                            clipObj.ypos * CANVAS_HEIGHT - borderSize),
+                                    g.Point(clipObj.xpos * CANVAS_WIDTH + 50 + borderSize, 
+                                            clipObj.ypos * CANVAS_HEIGHT + 50 + borderSize))
+                border.setFill(colorForFunction[functionIndex])
+                border.setOutline(colorForFunction[functionIndex])
+                border.draw(win)
+
+                effectIndex -= 1
+
+def drawVideoBoxesAndLines(clipObjs, startxpos):
+    prevxpos = 0
+    prevypos = CANVAS_HEIGHT / 2.0
+    for obj in clipObjs:
+        # draw to canvas
+        video = g.Rectangle(g.Point(obj.xpos * CANVAS_WIDTH, obj.ypos * CANVAS_HEIGHT), g.Point(obj.xpos * CANVAS_WIDTH + 50, obj.ypos * CANVAS_HEIGHT + 50))
+        video.setFill('bisque')
+        video.draw(win)
+        line = g.Line(g.Point(prevxpos + 50, prevypos + 25), g.Point(obj.xpos * CANVAS_WIDTH, obj.ypos * CANVAS_HEIGHT + 25))
+        line.setArrow('last')
+        line.setFill('white')
+        if obj.xpos < startxpos:
+            line.setFill('dim gray')
+        line.setWidth(4)
+        line.draw(win)
+
+        prevxpos = obj.xpos * CANVAS_WIDTH
+        prevypos = obj.ypos * CANVAS_HEIGHT
 
 def concatenate(clipFromPointer=False):
     try:
@@ -206,8 +245,6 @@ def concatenate(clipFromPointer=False):
         clipObjs = []
         effectObjs = []
         startxpos = -1 # 0 indicates which clip to start with
-        prevxpos = 0
-        prevypos = CANVAS_HEIGHT / 2.0
 
         for obj in objects:
             if obj.id == 0:
@@ -227,24 +264,15 @@ def concatenate(clipFromPointer=False):
                                        kerning = 5, fontsize=100).set_pos('center').set_duration(2)
                     clips.append(CompositeVideoClip([txtClip], size=screensize).set_fps(25))
                 clipObjs.append(obj)
-                # draw to canvas
-                video = g.Rectangle(g.Point(obj.xpos * CANVAS_WIDTH, obj.ypos * CANVAS_HEIGHT), g.Point(obj.xpos * CANVAS_WIDTH + 50, obj.ypos * CANVAS_HEIGHT + 50))
-                video.setFill('bisque')
-                video.draw(win)
-                line = g.Line(g.Point(prevxpos + 50, prevypos + 25), g.Point(obj.xpos * CANVAS_WIDTH, obj.ypos * CANVAS_HEIGHT + 25))
-                prevxpos = obj.xpos * CANVAS_WIDTH
-                prevypos = obj.ypos * CANVAS_HEIGHT
-                line.setArrow('last')
-                line.setFill('gold')
-                line.draw(win)
+
+        updateEffects(effectObjs, clipObjs)
+        applyEffects(clips, clipObjs)
+        drawVideoBoxesAndLines(clipObjs, startxpos)
 
         #when playing, play starting from fiducial 0 if it's on the screen
         if clipFromPointer and startxpos != -1:
             clips = [clip for obj,clip in zip(clipObjs,clips) if obj.xpos > startxpos - POINTER_OFFSET]
         print len(clips)
-
-        updateEffects(effectObjs, clipObjs)
-        applyEffects(clips, clipObjs)
 
         #concatenate all clips
         if len(clips) > 0:
@@ -305,6 +333,7 @@ print "list functions to access tracked objects:", tracking.get_helpers()
 # listener.start()
 
 win = g.GraphWin("prototype", 500, 500)
+win.setBackground('black')
 win.bind_all("<Key>", on_press)
 g.root.mainloop()
 
