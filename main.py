@@ -19,6 +19,7 @@ POINTER_OFFSET = 0.036
 screensize = (720,460)
 
 importedClipNames = [] # clip names in the import folder from oldest to newest add date
+effectsForClips = {} # each index in the form of fiducialid: [{func: func, effectObjs: [array of effectObjs]]}]
 
 # credit to https://www.daniweb.com/programming/software-development/code/216688/file-list-by-date-python
 def importClips():
@@ -149,7 +150,7 @@ def findClipIndexInsideEffectBlock(currEffectObjs, clipObjs):
             return index
     return None
 
-def applyEffects(effectObjs, clips, clipObjs):
+def updateEffects(effectObjs, clipObjs):
     effectObjIds = [effectObj.id for effectObj in effectObjs]
     print effectObjIds
     startId = 1 # tracks what's the first fiducial id associated with an effect, first effect fiducial is 1
@@ -167,15 +168,29 @@ def applyEffects(effectObjs, clips, clipObjs):
             else:
                 break
         else:
-            print "all clips on screen for effect ", effectIndex
-            print currEffectObjs
+            # print "all clips on screen for effect ", effectIndex
+            # print currEffectObjs
             clipIndex = findClipIndexInsideEffectBlock(currEffectObjs, clipObjs)
+            # print "clipIndex", clipIndex, effectsForClips
             if clipIndex != None:
-                print "applying ", effectIndex, " effect to clip id ", clipObjs[clipIndex].id
-                clips[clipIndex] = effectsFunctions[effectIndex](currEffectObjs, clips[clipIndex])
+                fiducialId = clipObjs[clipIndex].id
+                # print "applying ", effectIndex, " effect to clip id ", clipObjs[clipIndex].id
+                if fiducialId not in effectsForClips:
+                    effectsForClips[fiducialId] = {}
+                effectsForClips[fiducialId][effectsFunctions[effectIndex]] = currEffectObjs
         startId += fiducialsPerFunction[effectIndex]
 
-
+def applyEffects(clips, clipObjs):
+    print "effectsForClips:", effectsForClips
+    for clipIndex in range(len(clipObjs)):
+        fiducialId = clipObjs[clipIndex].id
+        if fiducialId in effectsForClips:
+            effectDict = effectsForClips[fiducialId]
+            for f in effectsFunctions:
+                if f in effectDict:
+                    effectObjs = effectDict[f]
+                    print f, effectObjs, clips[clipIndex]
+                    clips[clipIndex] = f(effectObjs, clips[clipIndex])
 
 def concatenate(clipFromPointer=False):
     try:
@@ -228,7 +243,8 @@ def concatenate(clipFromPointer=False):
             clips = [clip for obj,clip in zip(clipObjs,clips) if obj.xpos > startxpos - POINTER_OFFSET]
         print len(clips)
 
-        applyEffects(effectObjs, clips, clipObjs)
+        updateEffects(effectObjs, clipObjs)
+        applyEffects(clips, clipObjs)
 
         #concatenate all clips
         if len(clips) > 0:
