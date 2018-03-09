@@ -1,9 +1,12 @@
 import imageio
 imageio.plugins.ffmpeg.download()
+import threading
+import numpy as np
 import graphics as g
 
 import matplotlib
 matplotlib.use('TkAgg')
+import pygame as pg
 from moviepy.editor import *
 import moviepy.video.fx.all as vfx
 
@@ -12,15 +15,34 @@ from pynput import keyboard
 
 import os, glob, math, time, sys
 
-CANVAS_WIDTH = 500
-CANVAS_HEIGHT = 500
+# all screen sizes for testing, can play with this later
+CANVAS_WIDTH = 720
+CANVAS_HEIGHT = 250
+
+# define colors
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+GOLD = (255, 223, 0)
+GRAY = (169,169,169)
 
 POINTER_OFFSET = 0.036
 screensize = (720,460)
+previewsize = (720, 210)
 
 importedClipNames = [] # clip names in the import folder from oldest to newest add date
 fiducialIdForClips = [] # fiducial id at index of the imported clip name that it is associated with
 effectsForClips = {} # each index in the form of fiducialid: [{func: func, effectObjs: [array of effectObjs]]}]
+
+# initialize screen
+pg.init()
+screen = pg.display.set_mode(screensize)
+pg.display.set_caption("VideoBlox")
+
+def initScreen():
+    screen.fill(WHITE)
+    # divider b/w play and preview area
+    pg.draw.line(screen, BLACK, [0, CANVAS_HEIGHT - 5], [CANVAS_WIDTH, CANVAS_HEIGHT - 5], 5)
+    pg.display.flip()
 
 # credit to https://www.daniweb.com/programming/software-development/code/216688/file-list-by-date-python
 def importClips():
@@ -213,24 +235,32 @@ def applyEffects(clips, clipObjs):
 
                 effectIndex -= 1
 
-def drawVideoBoxesAndLines(clipObjs, startxpos):
+def drawArrow(startx, starty, endx, endy, color=GOLD):
+    pg.draw.polygon(screen, color, ((startx, starty - 5), (startx, starty + 5), (endx - 10, endy + 5), (endx - 10, endy + 10), (endx, endy), (endx - 10, endy - 10), (endx - 10, endy - 5)))
+
+def imdisplay(imarray, width=50, height=50, x=0, y=0):
+    """Splashes the given image array on the given pygame screen """
+    a = pg.surfarray.make_surface(imarray.swapaxes(0, 1))
+    a = pg.transform.scale(a, (width, height))
+    screen.blit(a, (x, y))
+
+def drawVideoBoxesAndLines(clipObjs, clips, startxpos):
+    """draws interface for screen"""
+    # TODO: have this update w/ block movement (instead of just on space-pressed currently)
     prevxpos = 0
     prevypos = CANVAS_HEIGHT / 2.0
-    for obj in clipObjs:
-        # draw to canvas
-        video = g.Rectangle(g.Point(obj.xpos * CANVAS_WIDTH, obj.ypos * CANVAS_HEIGHT), g.Point(obj.xpos * CANVAS_WIDTH + 50, obj.ypos * CANVAS_HEIGHT + 50))
-        video.setFill('bisque')
-        video.draw(win)
-        line = g.Line(g.Point(prevxpos + 50, prevypos + 25), g.Point(obj.xpos * CANVAS_WIDTH, obj.ypos * CANVAS_HEIGHT + 25))
-        line.setArrow('last')
-        line.setFill('white')
+    for i in range(len(clipObjs)):
+        video = clips[i].get_frame(0)
+        obj = clipObjs[i]
+        imdisplay(video, x=obj.xpos * CANVAS_WIDTH, y=obj.ypos * CANVAS_HEIGHT)
         if obj.xpos < startxpos:
-            line.setFill('dim gray')
-        line.setWidth(4)
-        line.draw(win)
+            drawArrow(prevxpos + 50, prevypos + 25, obj.xpos * CANVAS_WIDTH, obj.ypos * CANVAS_HEIGHT + 25, GRAY)
+        drawArrow(prevxpos + 50, prevypos + 25, obj.xpos * CANVAS_WIDTH, obj.ypos * CANVAS_HEIGHT + 25)
 
         prevxpos = obj.xpos * CANVAS_WIDTH
         prevypos = obj.ypos * CANVAS_HEIGHT
+
+    pg.display.flip() # limit calls to this b/c it takes hella long (refreshes display)
 
 def concatenate(clipFromPointer=False):
     importClips()
@@ -273,12 +303,12 @@ def concatenate(clipFromPointer=False):
 
         updateEffects(effectObjs, clipObjs)
         applyEffects(clips, clipObjs)
-        drawVideoBoxesAndLines(clipObjs, startxpos)
+        drawVideoBoxesAndLines(clipObjs, clips, startxpos)
 
         #when playing, play starting from fiducial 0 if it's on the screen
         if clipFromPointer and startxpos != -1:
             clips = [clip for obj,clip in zip(clipObjs,clips) if obj.xpos > startxpos - POINTER_OFFSET]
-        print len(clips)
+        print '# clips', len(clips)
 
         #concatenate all clips
         if len(clips) > 0:
@@ -292,10 +322,78 @@ def concatenate(clipFromPointer=False):
         tracking.stop()
     return None
 
+# reimplementing preview so video plays on same screen
+def preview(clip, fps=15, audio=True, audio_fps=22050,
+             audio_buffersize=3000, audio_nbytes=2):
+    """ 
+    Displays the clip in a window, at the given frames per second
+    (of movie) rate. It will avoid that the clip be played faster
+    than normal, but it cannot avoid the clip to be played slower
+    than normal if the computations are complex. In this case, try
+    reducing the ``fps``.
+    
+    Parameters
+    ------------
+    
+    fps
+      Number of frames per seconds in the displayed video.
+        
+    audio
+      ``True`` (default) if you want the clip's audio be played during
+      the preview.
+        
+    audiofps
+      The frames per second to use when generating the audio sound.
+      
+    """
+    audio = audio and (clip.audio is not None)
+    
+    if audio:
+        # the sound will be played in parrallel. We are not
+        # parralellizing it on different CPUs because it seems that
+        # pygame and openCV already use several cpus it seems.
+        
+        # two synchro-flags to tell whether audio and video are ready
+        videoFlag = threading.Event()
+        audioFlag = threading.Event()
+        # launch the thread
+        audiothread = threading.Thread(target=clip.audio.preview,
+            args = (audio_fps,audio_buffersize, audio_nbytes,
+                    audioFlag, videoFlag))
+        audiothread.start()
+    
+    img = clip.get_frame(0)
+    imdisplay(img, width=clip.w, height=clip.h, x=(CANVAS_WIDTH - clip.w)/2.0, y=CANVAS_HEIGHT)
+    pg.display.flip()
+    if audio: # synchronize with audio
+        videoFlag.set() # say to the audio: video is ready
+        audioFlag.wait() # wait for the audio to be ready
+    
+    result = []
+    
+    t0 = time.time()
+    for t in np.arange(1.0 / fps, clip.duration-.001, 1.0 / fps):
+        
+        img = clip.get_frame(t)
+        
+        for event in pg.event.get():
+            if event.type == pg.KEYDOWN:
+                if (event.key == pg.K_ESCAPE):
+                    
+                    if audio:
+                        videoFlag.clear()
+                    print( "Keyboard interrupt" )
+                    return result
+                    
+        t1 = time.time()
+        time.sleep(max(0, t - (t1-t0)) )
+        imdisplay(img, width=clip.w, height=clip.h, x=(CANVAS_WIDTH - clip.w)/2.0, y=CANVAS_HEIGHT)
+        pg.display.flip()
+
 def play():
     clip = concatenate(clipFromPointer=True)
     if clip != None:
-        clip.preview()
+        preview(clip)
 
 
 def save():
@@ -306,38 +404,36 @@ def save():
 
 
 def on_press(key):
-    if key.char == ' ':
-        for item in win.items[:]:
-            item.undraw()
-        win.update()
+    if key == 'space':
+        initScreen()
         play()
-    if key.char == '\x1b':
+    if key == 'escape':
         # Stop listener
         print 'Goodbye!'
         sys.exit(0)
-    print repr(key.char), 'pressed'
+    print key, 'pressed'
     # if hasattr(key, 'char'):
-    if key.char == 's':
+    if key == 's':
         save()
-
-# def on_release(key):
-#     print key.char, 'released'
-#     if repr(key.char) == "\'\x1b\'":
-#         # Stop listener
-#         print 'Goodbye!'
-#         return False
 
 tracking = tuio.Tracking()
 print "loaded profiles:", tracking.profiles.keys()
 print "list functions to access tracked objects:", tracking.get_helpers()
 
+initScreen()
+while True:
+    for event in pg.event.get():
+        if event.type == pg.KEYDOWN:
+            on_press(pg.key.name(event.key))
+
+# all of our old key listener code lol
 # listener = keyboard.Listener(
 #         on_press=on_press,
 #         on_release=on_release)
 # listener.start()
 
-win = g.GraphWin("prototype", 500, 500)
-win.setBackground('black')
-win.bind_all("<Key>", on_press)
-g.root.mainloop()
+# win = g.GraphWin("prototype", 500, 500)
+# win.setBackground('black')
+# win.bind_all("<Key>", on_press)
+# g.root.mainloop()
 
