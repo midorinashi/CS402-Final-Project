@@ -19,6 +19,7 @@ POINTER_OFFSET = 0.036
 screensize = (720,460)
 
 importedClipNames = [] # clip names in the import folder from oldest to newest add date
+fiducialIdForClips = [] # fiducial id at index of the imported clip name that it is associated with
 effectsForClips = {} # each index in the form of fiducialid: [{func: func, effectObjs: [array of effectObjs]]}]
 
 # credit to https://www.daniweb.com/programming/software-development/code/216688/file-list-by-date-python
@@ -43,8 +44,8 @@ def importClips():
         # add the clip if the name is new
         if file_name not in importedClipNames:
             importedClipNames.append(file_name)
-    print "There are ", len(importedClipNames), " imported clips."
-    print importedClipNames
+            print "There are ", len(importedClipNames), " imported clips."
+            print importedClipNames
 
 #scales distance of a slider to a fraction from 0 to 1, where 0 is if the slider is all the way to the
 #left and 1 is where the slider is all the way to the right
@@ -232,6 +233,7 @@ def drawVideoBoxesAndLines(clipObjs, startxpos):
         prevypos = obj.ypos * CANVAS_HEIGHT
 
 def concatenate(clipFromPointer=False):
+    importClips()
     try:
         #haxx to ensure the TUIO message is fresh - sometimes it's not??
         for i in range(100):
@@ -255,14 +257,18 @@ def concatenate(clipFromPointer=False):
 
                 print "id", obj.id, "angle", obj.angle
             else:
-                if obj.id <= len(importedClipNames) + numEffectsIds:
+                if obj.id in fiducialIdForClips:
                     # the first imported clip is associated with fiducial 1 since 0 is the seeker
-                    fileClip = VideoFileClip(importedClipNames[obj.id - 1 - numEffectsIds])
+                    fileClip = VideoFileClip(importedClipNames[fiducialIdForClips.index(obj.id)])
+                    clips.append(fileClip)
+                elif len(fiducialIdForClips) < len(importedClipNames):
+                    # associate a new clip with this fiducial
+                    fiducialIdForClips.append(obj.id)
+                    fileClip = VideoFileClip(importedClipNames[fiducialIdForClips.index(obj.id)])
                     clips.append(fileClip)
                 else:
-                    txtClip = TextClip(str(obj.id),color='white', font="Amiri-Bold",
-                                       kerning = 5, fontsize=100).set_pos('center').set_duration(2)
-                    clips.append(CompositeVideoClip([txtClip], size=screensize).set_fps(25))
+                    imgClip = ImageClip("no-video-icon.jpg", duration=1.5).on_color()
+                    clips.append(CompositeVideoClip([imgClip]).set_fps(25))
                 clipObjs.append(obj)
 
         updateEffects(effectObjs, clipObjs)
@@ -313,8 +319,6 @@ def on_press(key):
     # if hasattr(key, 'char'):
     if key.char == 's':
         save()
-    if key.char == 'i':
-        importClips()
 
 # def on_release(key):
 #     print key.char, 'released'
