@@ -231,7 +231,7 @@ def applyEffects(clips, clipObjs):
                                             clipObj.ypos * CANVAS_HEIGHT + 50 + borderSize))
                 border.setFill(colorForFunction[functionIndex])
                 border.setOutline(colorForFunction[functionIndex])
-                border.draw(win)
+                #border.draw(win)
 
                 effectIndex -= 1
 
