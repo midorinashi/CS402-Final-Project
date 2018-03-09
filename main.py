@@ -141,7 +141,7 @@ Basic - for reverse      One slider          Two sliders
 
 effectsFunctions = [reverse, changeSpeed, changeBrightness, trimClip, addText]
 fiducialsPerFunction = [2, 3, 3, 4, 2]
-colorForFunction = ['navy blue', 'dark green', 'dark slate gray', 'red4', 'gold4']
+colorForFunction = [(0,0,100), (0, 100, 0), (25, 25, 25), (100, 0 , 0), (100, 100, 0)]
 numEffectsIds = sum(fiducialsPerFunction)
 
 def findClipIndexInsideEffectBlock(currEffectObjs, clipObjs):
@@ -209,6 +209,7 @@ def updateEffects(effectObjs, clipObjs):
                                                     'effectObjs': currEffectObjs})
         startId += fiducialsPerFunction[effectIndex]
 
+VIDEO_RADIUS = 35
 def applyEffects(clips, clipObjs):
     print "effectsForClips:", effectsForClips
     for clipIndex in range(len(clipObjs)):
@@ -224,13 +225,10 @@ def applyEffects(clips, clipObjs):
                 clips[clipIndex] = f(effectObjs, clips[clipIndex])
 
                 functionIndex = effectsFunctions.index(f)
-                borderSize = 10 * effectIndex
-                border = g.Rectangle(g.Point(clipObj.xpos * CANVAS_WIDTH - borderSize,
-                                            clipObj.ypos * CANVAS_HEIGHT - borderSize),
-                                    g.Point(clipObj.xpos * CANVAS_WIDTH + 50 + borderSize, 
-                                            clipObj.ypos * CANVAS_HEIGHT + 50 + borderSize))
-                border.setFill(colorForFunction[functionIndex])
-                border.setOutline(colorForFunction[functionIndex])
+                circleSize = 10 * effectIndex + VIDEO_RADIUS
+                color = colorForFunction[functionIndex]
+                pg.draw.circle(screen, color, (int(clipObj.xpos * CANVAS_WIDTH + 25), int(clipObj.ypos * CANVAS_HEIGHT + 25)), circleSize)
+
                 #border.draw(win)
 
                 effectIndex -= 1
@@ -252,6 +250,7 @@ def drawVideoBoxesAndLines(clipObjs, clips, startxpos):
     for i in range(len(clipObjs)):
         video = clips[i].get_frame(0)
         obj = clipObjs[i]
+        pg.draw.circle(screen, WHITE, (int(obj.xpos * CANVAS_WIDTH + 25), int(obj.ypos * CANVAS_HEIGHT + 25)), VIDEO_RADIUS)
         imdisplay(video, x=obj.xpos * CANVAS_WIDTH, y=obj.ypos * CANVAS_HEIGHT)
         if obj.xpos < startxpos:
             drawArrow(prevxpos + 50, prevypos + 25, obj.xpos * CANVAS_WIDTH, obj.ypos * CANVAS_HEIGHT + 25, GRAY)
