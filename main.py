@@ -15,6 +15,7 @@ from pynput import keyboard
 
 import os, glob, math, time, sys
 
+# all screen sizes for testing, can play with this later
 CANVAS_WIDTH = 720
 CANVAS_HEIGHT = 250
 
@@ -25,7 +26,7 @@ GOLD = (255, 223, 0)
 GRAY = (169,169,169)
 
 POINTER_OFFSET = 0.036
-screensize = (720,460) # for testing, can play with this later
+screensize = (720,460)
 previewsize = (720, 210)
 
 importedClipNames = [] # clip names in the import folder from oldest to newest add date
@@ -39,7 +40,7 @@ pg.display.set_caption("VideoBlox")
 def initScreen():
     screen.fill(WHITE)
     # divider b/w play and preview area
-    pg.draw.line(screen, BLACK, [0, CANVAS_HEIGHT], [CANVAS_WIDTH, CANVAS_HEIGHT], 5)
+    pg.draw.line(screen, BLACK, [0, CANVAS_HEIGHT - 5], [CANVAS_WIDTH, CANVAS_HEIGHT - 5], 5)
     pg.display.flip()
 
 # credit to https://www.daniweb.com/programming/software-development/code/216688/file-list-by-date-python
@@ -240,15 +241,14 @@ def imdisplay(imarray, width=50, height=50, x=0, y=0):
     """Splashes the given image array on the given pygame screen """
     a = pg.surfarray.make_surface(imarray.swapaxes(0, 1))
     a = pg.transform.scale(a, (width, height))
-    # if screen is None:
-    #     screen = pg.display.set_mode(imarray.shape[:2][::-1])
     screen.blit(a, (x, y))
 
 def drawVideoBoxesAndLines(clipObjs, clips, startxpos):
+    """draws interface for screen"""
+    # TODO: have this update w/ block movement (instead of just on space-pressed currently)
     prevxpos = 0
     prevypos = CANVAS_HEIGHT / 2.0
     for i in range(len(clipObjs)):
-        # draw to canvas
         video = clips[i].get_frame(0)
         obj = clipObjs[i]
         imdisplay(video, x=obj.xpos * CANVAS_WIDTH, y=obj.ypos * CANVAS_HEIGHT)
@@ -259,7 +259,7 @@ def drawVideoBoxesAndLines(clipObjs, clips, startxpos):
         prevxpos = obj.xpos * CANVAS_WIDTH
         prevypos = obj.ypos * CANVAS_HEIGHT
 
-    pg.display.flip()
+    pg.display.flip() # limit calls to this b/c it takes hella long (refreshes display)
 
 def concatenate(clipFromPointer=False):
     try:
@@ -341,12 +341,6 @@ def preview(clip, fps=15, audio=True, audio_fps=22050,
       The frames per second to use when generating the audio sound.
       
     """
-    
-    # import pygame as pg
-    
-    # # compute and splash the first image
-    # screen = pg.display.set_mode(clip.size)
-    
     audio = audio and (clip.audio is not None)
     
     if audio:
@@ -364,7 +358,8 @@ def preview(clip, fps=15, audio=True, audio_fps=22050,
         audiothread.start()
     
     img = clip.get_frame(0)
-    imdisplay(img, width=clip.size[0], height=clip.size[1], x=0, y=CANVAS_HEIGHT)
+    imdisplay(img, width=clip.w, height=clip.h, x=(CANVAS_WIDTH - clip.w)/2.0, y=CANVAS_HEIGHT)
+    pg.display.flip()
     if audio: # synchronize with audio
         videoFlag.set() # say to the audio: video is ready
         audioFlag.wait() # wait for the audio to be ready
@@ -387,8 +382,8 @@ def preview(clip, fps=15, audio=True, audio_fps=22050,
                     
         t1 = time.time()
         time.sleep(max(0, t - (t1-t0)) )
-        imdisplay(img, width=clip.size[0], height=clip.size[1], x=0, y=CANVAS_HEIGHT)
-
+        imdisplay(img, width=clip.w, height=clip.h, x=(CANVAS_WIDTH - clip.w)/2.0, y=CANVAS_HEIGHT)
+        pg.display.flip()
 
 def play():
     clip = concatenate(clipFromPointer=True)
@@ -422,17 +417,18 @@ tracking = tuio.Tracking()
 print "loaded profiles:", tracking.profiles.keys()
 print "list functions to access tracked objects:", tracking.get_helpers()
 
+initScreen()
+while True:
+    for event in pg.event.get():
+        if event.type == pg.KEYDOWN:
+            on_press(pg.key.name(event.key))
+
+# all of our old key listener code lol
 # listener = keyboard.Listener(
 #         on_press=on_press,
 #         on_release=on_release)
 # listener.start()
 
-initScreen()
-
-while True:
-    for event in pg.event.get():
-        if event.type == pg.KEYDOWN:
-            on_press(pg.key.name(event.key))
 # win = g.GraphWin("prototype", 500, 500)
 # win.setBackground('black')
 # win.bind_all("<Key>", on_press)
