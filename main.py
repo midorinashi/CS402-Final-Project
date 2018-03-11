@@ -32,6 +32,7 @@ previewsize = (720, 210)
 importedClipNames = [] # clip names in the import folder from oldest to newest add date
 fiducialIdForClips = [] # fiducial id at index of the imported clip name that it is associated with
 effectsForClips = {} # each index in the form of fiducialid: [{func: func, effectObjs: [array of effectObjs]]}]
+imagesForClips = {} # cache that maps fiducial IDs to image previews
 
 # initialize screen
 pg.init()
@@ -143,6 +144,21 @@ colorForFunction = [(255,255,100), (255, 100, 255), (200, 200, 200), (100, 255, 
 numEffectsIds = sum(fiducialsPerFunction)
 SPECIAL_FIDUCIALS = 2 # 0 for seek, 1 for preview
 
+def updateVideoClips(clipObjs, clips):
+    for obj in clipObjs:
+        if obj.id in fiducialIdForClips:
+            # the first imported clip is associated with fiducial 1 since 0 is the seeker
+            fileClip = VideoFileClip(importedClipNames[fiducialIdForClips.index(obj.id)])
+            clips.append(fileClip)
+        elif len(fiducialIdForClips) < len(importedClipNames):
+            # associate a new clip with this fiducial
+            fiducialIdForClips.append(obj.id)
+            fileClip = VideoFileClip(importedClipNames[fiducialIdForClips.index(obj.id)])
+            clips.append(fileClip)
+        else:
+            imgClip = ImageClip("no-video-icon.jpg", duration=1.5).on_color()
+            clips.append(CompositeVideoClip([imgClip]).set_fps(25))
+
 def findClipIndexInsideEffectBlock(currEffectObjs, clipObjs):
     top = currEffectObjs[0].ypos
     left = currEffectObjs[0].xpos
@@ -245,12 +261,15 @@ def imdisplay(imarray, width=50, height=50, x=0, y=0):
 
 def drawVideoBoxesAndLines(clipObjs, clips, startxpos):
     """draws interface for screen"""
-    # TODO: have this update w/ block movement (instead of just on space-pressed currently)
     prevxpos = 0
     prevypos = CANVAS_HEIGHT / 2.0
     for i in range(len(clipObjs)):
-        video = clips[i].get_frame(0)
         obj = clipObjs[i]
+        if clips:
+            video = clips[i].get_frame(0)
+            imagesForClips[obj.id] = video
+        else:
+            video = imagesForClips[obj.id]
         pg.draw.circle(screen, BLACK, (int(obj.xpos * CANVAS_WIDTH + 25), int(obj.ypos * CANVAS_HEIGHT + 25)), VIDEO_RADIUS)
         imdisplay(video, x=obj.xpos * CANVAS_WIDTH, y=obj.ypos * CANVAS_HEIGHT)
         if obj.xpos < startxpos:
@@ -262,7 +281,7 @@ def drawVideoBoxesAndLines(clipObjs, clips, startxpos):
 
     pg.display.flip() # limit calls to this b/c it takes hella long (refreshes display)
 
-def fetchClips(clipFromPointer=False, objects=None):
+def fetchClips(clipFromPointer=False, objects=None, updated=True):
     importClips()
     try:
         #haxx to ensure the TUIO message is fresh - sometimes it's not??
@@ -299,31 +318,20 @@ def fetchClips(clipFromPointer=False, objects=None):
                     clipObjs.append(obj)
 
         clipObjs = sorted(clipObjs, key=lambda x: x.xpos)
-        for obj in clipObjs:
-            if obj.id in fiducialIdForClips:
-                # the first imported clip is associated with fiducial 1 since 0 is the seeker
-                fileClip = VideoFileClip(importedClipNames[fiducialIdForClips.index(obj.id)])
-                clips.append(fileClip)
-            elif len(fiducialIdForClips) < len(importedClipNames):
-                # associate a new clip with this fiducial
-                fiducialIdForClips.append(obj.id)
-                fileClip = VideoFileClip(importedClipNames[fiducialIdForClips.index(obj.id)])
-                clips.append(fileClip)
-            else:
-                imgClip = ImageClip("no-video-icon.jpg", duration=1.5).on_color()
-                clips.append(CompositeVideoClip([imgClip]).set_fps(25))
+        if updated:
+            updateVideoClips(clipObjs, clips)
+            updateEffects(effectObjs, clipObjs)
+            applyEffects(clips, clipObjs)
 
-        updateEffects(effectObjs, clipObjs)
-        applyEffects(clips, clipObjs)
         drawVideoBoxesAndLines(clipObjs, clips, startxpos)
 
         #when playing, play starting from fiducial 0 if it's on the screen
         if clipFromPointer and startxpos != -1:
             clips = [clip for obj,clip in zip(clipObjs,clips) if obj.xpos > startxpos - POINTER_OFFSET]
-        print '# clips', len(clips)
 
         #concatenate all clips
         if len(clips) > 0:
+            print '# clips', len(clips)
             return clips, previewObj, clipObjs
 
     except KeyboardInterrupt:
@@ -451,8 +459,6 @@ def on_press(key):
         save()
 
 def trackingChanged(one, two):
-    if len(one) != len(two):
-        return True
     for i in range(len(one)):
         if (one[i].id != two[i].id or
             one[i].xpos != two[i].xpos or
@@ -473,13 +479,18 @@ while True:
         tracking.update()
 
     objects = sorted(tracking.objects(), key=lambda x: x.id)
-    if trackingChanged(prevObjects, objects):
-        # update display
-        print sum(1 for _ in tracking.objects()),'blocks found!'
+    # update display whenever tracking changes
+    if len(prevObjects) != len(objects):
+        # clip or effect block added, re-load all videos
+        print len(objects),'blocks found!'
         print 'blocks order:', [obj.id for obj in objects]
         initScreen()
-        clips, previewObj, clipObjs = fetchClips(clipFromPointer=True, objects=objects)
-        print clips, previewObj
+        fetchClips(objects=objects)
+        prevObjects = copy.deepcopy(objects)
+    elif trackingChanged(prevObjects, objects):
+        # same blocks but moved around, use cached images
+        initScreen()
+        fetchClips(objects=objects, updated=False)
         prevObjects = copy.deepcopy(objects)
     for event in pg.event.get():
         if event.type == pg.KEYDOWN:
