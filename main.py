@@ -138,11 +138,11 @@ Basic - for reverse      One slider          Two sliders
 |_______________|     |_______________|   |_______________|   
 '''
 
-effectsFunctions = [reverse, changeSpeed] #[reverse, changeSpeed, changeBrightness, trimClip, addText]
-fiducialsPerFunction = [2,3] #[2, 3, 3, 4, 2]
+effectsFunctions = [reverse, changeSpeed, changeBrightness, trimClip, addText]
+fiducialsPerFunction = [2, 3, 3, 4, 2]
 colorForFunction = [(255,255,100), (255, 100, 255), (200, 200, 200), (100, 255, 255), (100, 100, 255)]
 numEffectsIds = sum(fiducialsPerFunction)
-SPECIAL_FIDUCIALS = 2 # 0 for seek, 1 for preview
+SPECIAL_FIDUCIALS = 3 # 0 for seek, 1-2 for preview
 
 def findClipIndexInsideEffectBlock(currEffectObjs, clipObjs):
     top = currEffectObjs[0].ypos
@@ -291,8 +291,12 @@ def fetchClips(clipFromPointer=False):
             if obj.id == 0:
                 startxpos = obj.xpos
             #if the fiducial has a clip associated with it
-            elif obj.id == 1:
-                previewObj = obj
+            elif obj.id == 2:
+                prevObj = objects[objIndex - 1]
+                if prevObj.id == 1:
+                    obj.xpos = (obj.xpos + prevObj.xpos) / 2
+                    obj.ypos = (obj.ypos + prevObj.ypos) / 2
+                    previewObj = obj
             elif obj.id < numEffectsIds + SPECIAL_FIDUCIALS:
                 effectObjs.append(obj)
 
@@ -387,7 +391,7 @@ def playClipAtBlock(clip, block, fps=15, audio=True, audio_fps=22050,
 
     width = VIDEO_WIDTH
     height = VIDEO_WIDTH
-    if block.id == 1:
+    if block.id == 2:
         width = 300
         height = clip.h * 300 / clip.w
     xpos = block.xpos * CANVAS_WIDTH - width / 2
