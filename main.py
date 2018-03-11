@@ -40,8 +40,6 @@ pg.display.set_caption("VideoBlox")
 
 def initScreen():
     screen.fill(BLACK)
-    # divider b/w play and preview area
-    pg.draw.line(screen, WHITE, [0, CANVAS_HEIGHT - 5], [CANVAS_WIDTH, CANVAS_HEIGHT - 5], 1)
     pg.display.flip()
 
 # credit to https://www.daniweb.com/programming/software-development/code/216688/file-list-by-date-python
@@ -139,10 +137,11 @@ Basic - for reverse      One slider          Two sliders
 |_______________|     |_______________|   |_______________|   
 '''
 
-effectsFunctions = [reverse, changeSpeed] #[reverse, changeSpeed, changeBrightness, trimClip, addText]
-fiducialsPerFunction = [2,3] #[2, 3, 3, 4, 2]
+effectsFunctions = [reverse, changeSpeed, changeBrightness, trimClip, addText]
+fiducialsPerFunction = [2, 3, 3, 4, 2]
 colorForFunction = [(255,255,100), (255, 100, 255), (200, 200, 200), (100, 255, 255), (100, 100, 255)]
 numEffectsIds = sum(fiducialsPerFunction)
+SPECIAL_FIDUCIALS = 2 # 0 for seek, 1 for preview
 
 def findClipIndexInsideEffectBlock(currEffectObjs, clipObjs):
     top = currEffectObjs[0].ypos
@@ -185,7 +184,8 @@ def updateEffects(effectObjs, clipObjs):
 
     for effectIndex in range(len(effectsFunctions)):
         currEffectObjs = []
-        for fiducialId in range(startId, startId + fiducialsPerFunction[effectIndex]):
+        for fiducialId in range(startId + SPECIAL_FIDUCIALS - 1, 
+                                startId + SPECIAL_FIDUCIALS - 1 + fiducialsPerFunction[effectIndex]):
             #if not all fiducial Ids are 
             if fiducialId in effectObjIds:
                 currEffectObjs.append(effectObjs[effectObjIds.index(fiducialId)])
@@ -223,7 +223,7 @@ def applyEffects(clips, clipObjs):
                 effectObjs = entry['effectObjs']
                 # print f, effectObjs, clips[clipIndex]
                 clips[clipIndex] = f(effectObjs, clips[clipIndex])
-                print f, effectObjs, clipIndex
+                print "applying effect:", f, effectObjs, clipIndex
 
                 functionIndex = effectsFunctions.index(f)
                 circleSize = 10 * effectIndex + VIDEO_RADIUS
@@ -262,7 +262,7 @@ def drawVideoBoxesAndLines(clipObjs, clips, startxpos):
 
     pg.display.flip() # limit calls to this b/c it takes hella long (refreshes display)
 
-def concatenate(clipFromPointer=False):
+def fetchClips(clipFromPointer=False):
     importClips()
     try:
         #haxx to ensure the TUIO message is fresh - sometimes it's not??
@@ -277,19 +277,22 @@ def concatenate(clipFromPointer=False):
         clipObjs = []
         effectObjs = []
         startxpos = -1 # 0 indicates which clip to start with
+        previewObj = None
 
         for objIndex in range(len(objects)):
             obj = objects[objIndex]
             if obj.id == 0:
                 startxpos = obj.xpos
             #if the fiducial has a clip associated with it
-            elif obj.id <= numEffectsIds:
+            elif obj.id == 1:
+                previewObj = obj
+            elif obj.id < numEffectsIds + SPECIAL_FIDUCIALS:
                 effectObjs.append(obj)
 
                 print "id", obj.id, "angle", obj.angle
             else:
                 prevObj = objects[objIndex - 1]
-                if obj.id == prevObj.id + 1 and obj.id % 2 == numEffectsIds % 2:
+                if obj.id == prevObj.id + 1 and obj.id % 2 != (SPECIAL_FIDUCIALS + numEffectsIds) % 2:
                     obj.xpos = (obj.xpos + prevObj.xpos) / 2
                     obj.ypos = (obj.ypos + prevObj.ypos) / 2
                     clipObjs.append(obj)
@@ -308,7 +311,7 @@ def concatenate(clipFromPointer=False):
             else:
                 imgClip = ImageClip("no-video-icon.jpg", duration=1.5).on_color()
                 clips.append(CompositeVideoClip([imgClip]).set_fps(25))
-                
+
         updateEffects(effectObjs, clipObjs)
         applyEffects(clips, clipObjs)
         drawVideoBoxesAndLines(clipObjs, clips, startxpos)
@@ -320,18 +323,21 @@ def concatenate(clipFromPointer=False):
 
         #concatenate all clips
         if len(clips) > 0:
-            cvc = concatenate_videoclips(clips, method="compose")
-            #hack to get the audio working, apparently it doesn't copy audio fps properly
-            if cvc.audio != None:
-                cvc.audio.fps = 44100
-            return cvc
+            return clips, previewObj, clipObjs
 
     except KeyboardInterrupt:
         tracking.stop()
-    return None
+    return None, None, None
 
-# reimplementing preview so video plays on same screen
-def preview(clip, fps=15, audio=True, audio_fps=22050,
+def concatenate(clips):
+    cvc = concatenate_videoclips(clips, method="compose")
+    #hack to get the audio working, apparently it doesn't copy audio fps properly
+    if cvc.audio != None:
+        cvc.audio.fps = 44100
+    return cvc
+
+#returns True if preview ended, False if the preview was interrupted
+def playClipAtBlock(clip, block, fps=15, audio=True, audio_fps=22050,
              audio_buffersize=3000, audio_nbytes=2):
     """ 
     Displays the clip in a window, at the given frames per second
@@ -371,13 +377,18 @@ def preview(clip, fps=15, audio=True, audio_fps=22050,
         audiothread.start()
     
     img = clip.get_frame(0)
-    imdisplay(img, width=clip.w, height=clip.h, x=(CANVAS_WIDTH - clip.w)/2.0, y=CANVAS_HEIGHT)
+
+    width = 50
+    height = 50
+    if block.id == 1:
+        width = 300
+        height = clip.h * 300 / clip.w
+    imdisplay(img, width=width, height=height, x=block.xpos * CANVAS_WIDTH, y=block.ypos * CANVAS_HEIGHT)
+    print block.xpos
     pg.display.flip()
     if audio: # synchronize with audio
         videoFlag.set() # say to the audio: video is ready
         audioFlag.wait() # wait for the audio to be ready
-    
-    result = []
     
     t0 = time.time()
     for t in np.arange(1.0 / fps, clip.duration-.001, 1.0 / fps):
@@ -391,22 +402,37 @@ def preview(clip, fps=15, audio=True, audio_fps=22050,
                     if audio:
                         videoFlag.clear()
                     print( "Keyboard interrupt" )
-                    return result
+                    return False
                     
         t1 = time.time()
         time.sleep(max(0, t - (t1-t0)) )
-        imdisplay(img, width=clip.w, height=clip.h, x=(CANVAS_WIDTH - clip.w)/2.0, y=CANVAS_HEIGHT)
+        imdisplay(img, width=width, height=height, x=block.xpos * CANVAS_WIDTH, y=block.ypos * CANVAS_HEIGHT)
         pg.display.flip()
+    return True
+
+# reimplementing preview so video plays on same screen
+def preview(clips, previewObj, clipObjs):
+    print "previewing:", clips, previewObj, clipObjs
+    if previewObj == None:
+        for index in range(len(clips)):
+            result = playClipAtBlock(clips[index], clipObjs[len(clipObjs) - len(clips) + index])
+            if result == False:
+                break
+    else:
+        clip = concatenate(clips)
+        playClipAtBlock(clip, previewObj)
 
 def play():
-    clip = concatenate(clipFromPointer=True)
-    if clip != None:
-        preview(clip)
+    clips, previewObj, clipObjs = fetchClips(clipFromPointer=True)
+    print clips, previewObj
+    if clips != None:
+        preview(clips, previewObj, clipObjs)
 
 
 def save():
-    clip = concatenate()
-    if clip != None:
+    clips, previewObj, clipObjs = fetchClips()
+    if clips != None:
+        clip = concatenate(clips)
         #the default video file encodes audio in a way quicktime won't play, so we add these params
         clip.write_videofile("video.mp4", codec="libx264", temp_audiofile='temp-audio.m4a', remove_temp=True, audio_codec='aac')
 
