@@ -17,16 +17,16 @@ import os, glob, math, time, sys, copy
 
 # all screen sizes for testing, can play with this later
 CANVAS_WIDTH = 720
-CANVAS_HEIGHT = 250
+CANVAS_HEIGHT = 460
 
 # define colors
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 GOLD = (255, 223, 0)
-GRAY = (169,169,169)
+GRAY = (70,70,70)
 
 POINTER_OFFSET = 0.036
-screensize = (720,460)
+screensize = (CANVAS_WIDTH, CANVAS_HEIGHT)
 previewsize = (720, 210)
 
 importedClipNames = [] # clip names in the import folder from oldest to newest add date
@@ -42,6 +42,7 @@ pg.display.set_caption("VideoBlox")
 def initScreen():
     screen.fill(BLACK)
     pg.display.flip()
+    pg.display.toggle_fullscreen()
 
 # credit to https://www.daniweb.com/programming/software-development/code/216688/file-list-by-date-python
 def importClips():
@@ -138,11 +139,11 @@ Basic - for reverse      One slider          Two sliders
 |_______________|     |_______________|   |_______________|   
 '''
 
-effectsFunctions = [reverse, changeSpeed] #, changeBrightness, trimClip, addText]
-fiducialsPerFunction = [2, 3] #, 3, 4, 2]
+effectsFunctions = [reverse, changeSpeed, changeBrightness, trimClip, addText]
+fiducialsPerFunction = [2, 3, 3, 4, 2]
 colorForFunction = [(255,255,100), (255, 100, 255), (200, 200, 200), (100, 255, 255), (100, 100, 255)]
 numEffectsIds = sum(fiducialsPerFunction)
-SPECIAL_FIDUCIALS = 2 # 0 for seek, 1 for preview
+SPECIAL_FIDUCIALS = 3 # 0 for seek, 1-2 for preview
 
 def updateVideoClips(clipObjs, clips):
     for obj in clipObjs:
@@ -225,7 +226,8 @@ def updateEffects(effectObjs, clipObjs):
                                                     'effectObjs': currEffectObjs})
         startId += fiducialsPerFunction[effectIndex]
 
-VIDEO_RADIUS = 35
+ONE_INCH = 35 #also equal to the video radius
+VIDEO_WIDTH = 50
 def applyEffects(clips, clipObjs):
     print "effectsForClips:", effectsForClips
     for clipIndex in range(len(clipObjs)):
@@ -242,18 +244,19 @@ def applyEffects(clips, clipObjs):
                 print "applying effect:", f, effectObjs, clipIndex
 
                 functionIndex = effectsFunctions.index(f)
-                circleSize = 10 * effectIndex + VIDEO_RADIUS
+                circleSize = ONE_INCH / 2 * effectIndex + 2 * ONE_INCH # one inch for the video radius, one inch for the video border
                 color = colorForFunction[functionIndex]
-                pg.draw.circle(screen, color, (int(clipObj.xpos * CANVAS_WIDTH + 25), int(clipObj.ypos * CANVAS_HEIGHT + 25)), circleSize)
+                pg.draw.circle(screen, color, (int(clipObj.xpos * CANVAS_WIDTH), int(clipObj.ypos * CANVAS_HEIGHT)), circleSize)
 
                 #border.draw(win)
 
                 effectIndex -= 1
 
-def drawArrow(startx, starty, endx, endy, color=GOLD):
+def drawArrow(startx, starty, endx, endy, color=WHITE):
     pg.draw.polygon(screen, color, ((startx, starty - 5), (startx, starty + 5), (endx - 10, endy + 5), (endx - 10, endy + 10), (endx, endy), (endx - 10, endy - 10), (endx - 10, endy - 5)))
+    pg.draw.polygon(screen, BLACK, ((startx, starty - 5), (startx, starty + 5), (endx - 10, endy + 5), (endx - 10, endy + 10), (endx, endy), (endx - 10, endy - 10), (endx - 10, endy - 5)), 1)
 
-def imdisplay(imarray, width=50, height=50, x=0, y=0):
+def imdisplay(imarray, width=VIDEO_WIDTH, height=VIDEO_WIDTH, x=0, y=0):
     """Splashes the given image array on the given pygame screen """
     a = pg.surfarray.make_surface(imarray.swapaxes(0, 1))
     a = pg.transform.scale(a, (width, height))
@@ -261,7 +264,7 @@ def imdisplay(imarray, width=50, height=50, x=0, y=0):
 
 def drawVideoBoxesAndLines(clipObjs, clips, startxpos):
     """draws interface for screen"""
-    prevxpos = 0
+    prevxpos =  -ONE_INCH
     prevypos = CANVAS_HEIGHT / 2.0
     for i in range(len(clipObjs)):
         obj = clipObjs[i]
@@ -270,11 +273,15 @@ def drawVideoBoxesAndLines(clipObjs, clips, startxpos):
             imagesForClips[obj.id] = video
         else:
             video = imagesForClips[obj.id]
-        pg.draw.circle(screen, BLACK, (int(obj.xpos * CANVAS_WIDTH + 25), int(obj.ypos * CANVAS_HEIGHT + 25)), VIDEO_RADIUS)
-        imdisplay(video, x=obj.xpos * CANVAS_WIDTH, y=obj.ypos * CANVAS_HEIGHT)
+        pg.draw.circle(screen, BLACK, (int(obj.xpos * CANVAS_WIDTH), int(obj.ypos * CANVAS_HEIGHT)), 2 * ONE_INCH) # one inch for the video radius, one inch for the video border
+        imdisplay(video, x=obj.xpos * CANVAS_WIDTH - VIDEO_WIDTH / 2, y=obj.ypos * CANVAS_HEIGHT - VIDEO_WIDTH / 2)
         if obj.xpos < startxpos:
-            drawArrow(prevxpos + 50, prevypos + 25, obj.xpos * CANVAS_WIDTH, obj.ypos * CANVAS_HEIGHT + 25, GRAY)
-        drawArrow(prevxpos + 50, prevypos + 25, obj.xpos * CANVAS_WIDTH, obj.ypos * CANVAS_HEIGHT + 25)
+            drawArrow(prevxpos + 2 * ONE_INCH, prevypos, 
+                      obj.xpos * CANVAS_WIDTH - 2 * ONE_INCH, obj.ypos * CANVAS_HEIGHT, 
+                      GRAY)
+        else:
+            drawArrow(prevxpos + 2 * ONE_INCH, prevypos,
+                      obj.xpos * CANVAS_WIDTH - 2 * ONE_INCH, obj.ypos * CANVAS_HEIGHT)
 
         prevxpos = obj.xpos * CANVAS_WIDTH
         prevypos = obj.ypos * CANVAS_HEIGHT
@@ -304,15 +311,19 @@ def fetchClips(clipFromPointer=False, objects=None, updated=True):
             if obj.id == 0:
                 startxpos = obj.xpos
             #if the fiducial has a clip associated with it
-            elif obj.id == 1:
-                previewObj = obj
+            elif obj.id == 2:
+                prevObj = objects[objIndex - 1]
+                if prevObj.id == 1:
+                    obj.xpos = (obj.xpos + prevObj.xpos) / 2
+                    obj.ypos = (obj.ypos + prevObj.ypos) / 2
+                    previewObj = obj
             elif obj.id < numEffectsIds + SPECIAL_FIDUCIALS:
                 effectObjs.append(obj)
 
                 print "id", obj.id, "angle", obj.angle
             else:
                 prevObj = objects[objIndex - 1]
-                if obj.id == prevObj.id + 1 and obj.id % 2 != (SPECIAL_FIDUCIALS + numEffectsIds) % 2:
+                if obj.id == prevObj.id + 1 and obj.id % 2 == 0:
                     obj.xpos = (obj.xpos + prevObj.xpos) / 2
                     obj.ypos = (obj.ypos + prevObj.ypos) / 2
                     clipObjs.append(obj)
@@ -387,12 +398,14 @@ def playClipAtBlock(clip, block, fps=15, audio=True, audio_fps=22050,
     
     img = clip.get_frame(0)
 
-    width = 50
-    height = 50
-    if block.id == 1:
+    width = VIDEO_WIDTH
+    height = VIDEO_WIDTH
+    if block.id == 2:
         width = 300
         height = clip.h * 300 / clip.w
-    imdisplay(img, width=width, height=height, x=block.xpos * CANVAS_WIDTH, y=block.ypos * CANVAS_HEIGHT)
+    xpos = block.xpos * CANVAS_WIDTH - width / 2
+    ypos = block.ypos * CANVAS_HEIGHT - height / 2
+    imdisplay(img, width=width, height=height, x=xpos, y=ypos)
     print block.xpos
     pg.display.flip()
     if audio: # synchronize with audio
@@ -415,7 +428,7 @@ def playClipAtBlock(clip, block, fps=15, audio=True, audio_fps=22050,
                     
         t1 = time.time()
         time.sleep(max(0, t - (t1-t0)) )
-        imdisplay(img, width=width, height=height, x=block.xpos * CANVAS_WIDTH, y=block.ypos * CANVAS_HEIGHT)
+        imdisplay(img, width=width, height=height, x=xpos, y=ypos)
         pg.display.flip()
     return True
 
