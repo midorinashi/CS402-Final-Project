@@ -13,7 +13,7 @@ import moviepy.video.fx.all as vfx
 import tuio
 from pynput import keyboard
 
-import os, glob, math, time, sys
+import os, glob, math, time, sys, copy
 
 # all screen sizes for testing, can play with this later
 CANVAS_WIDTH = 720
@@ -137,8 +137,8 @@ Basic - for reverse      One slider          Two sliders
 |_______________|     |_______________|   |_______________|   
 '''
 
-effectsFunctions = [reverse, changeSpeed, changeBrightness, trimClip, addText]
-fiducialsPerFunction = [2, 3, 3, 4, 2]
+effectsFunctions = [reverse, changeSpeed] #, changeBrightness, trimClip, addText]
+fiducialsPerFunction = [2, 3] #, 3, 4, 2]
 colorForFunction = [(255,255,100), (255, 100, 255), (200, 200, 200), (100, 255, 255), (100, 100, 255)]
 numEffectsIds = sum(fiducialsPerFunction)
 SPECIAL_FIDUCIALS = 2 # 0 for seek, 1 for preview
@@ -262,16 +262,17 @@ def drawVideoBoxesAndLines(clipObjs, clips, startxpos):
 
     pg.display.flip() # limit calls to this b/c it takes hella long (refreshes display)
 
-def fetchClips(clipFromPointer=False):
+def fetchClips(clipFromPointer=False, objects=None):
     importClips()
     try:
         #haxx to ensure the TUIO message is fresh - sometimes it's not??
-        for i in range(100):
-            tracking.update()
+        if not objects:
+            for i in range(50):
+                tracking.update()
 
-        print sum(1 for _ in tracking.objects()),'blocks found!'
-        objects = sorted(tracking.objects(), key=lambda x: x.id)
-        print 'blocks order:', [obj.id for obj in objects]
+            print sum(1 for _ in tracking.objects()),'blocks found!'
+            objects = sorted(tracking.objects(), key=lambda x: x.id)
+            print 'blocks order:', [obj.id for obj in objects]
 
         clips = []
         clipObjs = []
@@ -446,16 +447,40 @@ def on_press(key):
         print 'Goodbye!'
         sys.exit(0)
     print key, 'pressed'
-    # if hasattr(key, 'char'):
     if key == 's':
         save()
+
+def trackingChanged(one, two):
+    if len(one) != len(two):
+        return True
+    for i in range(len(one)):
+        if (one[i].id != two[i].id or
+            one[i].xpos != two[i].xpos or
+            one[i].ypos != two[i].ypos):
+            return True
+    return False
 
 tracking = tuio.Tracking()
 print "loaded profiles:", tracking.profiles.keys()
 print "list functions to access tracked objects:", tracking.get_helpers()
 
 initScreen()
+importClips()
+prevObjects = []
 while True:
+    #haxx to ensure the TUIO message is fresh - sometimes it's not??
+    for i in range(50):
+        tracking.update()
+
+    objects = sorted(tracking.objects(), key=lambda x: x.id)
+    if trackingChanged(prevObjects, objects):
+        # update display
+        print sum(1 for _ in tracking.objects()),'blocks found!'
+        print 'blocks order:', [obj.id for obj in objects]
+        initScreen()
+        clips, previewObj, clipObjs = fetchClips(clipFromPointer=True, objects=objects)
+        print clips, previewObj
+        prevObjects = copy.deepcopy(objects)
     for event in pg.event.get():
         if event.type == pg.KEYDOWN:
             on_press(pg.key.name(event.key))
