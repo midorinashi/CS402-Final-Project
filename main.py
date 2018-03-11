@@ -39,9 +39,9 @@ screen = pg.display.set_mode(screensize)
 pg.display.set_caption("VideoBlox")
 
 def initScreen():
-    screen.fill(WHITE)
+    screen.fill(BLACK)
     # divider b/w play and preview area
-    pg.draw.line(screen, BLACK, [0, CANVAS_HEIGHT - 5], [CANVAS_WIDTH, CANVAS_HEIGHT - 5], 5)
+    pg.draw.line(screen, WHITE, [0, CANVAS_HEIGHT - 5], [CANVAS_WIDTH, CANVAS_HEIGHT - 5], 1)
     pg.display.flip()
 
 # credit to https://www.daniweb.com/programming/software-development/code/216688/file-list-by-date-python
@@ -139,9 +139,9 @@ Basic - for reverse      One slider          Two sliders
 |_______________|     |_______________|   |_______________|   
 '''
 
-effectsFunctions = [reverse, changeSpeed, changeBrightness, trimClip, addText]
-fiducialsPerFunction = [2, 3, 3, 4, 2]
-colorForFunction = [(0,0,100), (0, 100, 0), (25, 25, 25), (100, 0 , 0), (100, 100, 0)]
+effectsFunctions = [reverse, changeSpeed] #[reverse, changeSpeed, changeBrightness, trimClip, addText]
+fiducialsPerFunction = [2,3] #[2, 3, 3, 4, 2]
+colorForFunction = [(255,255,100), (255, 100, 255), (200, 200, 200), (100, 255, 255), (100, 100, 255)]
 numEffectsIds = sum(fiducialsPerFunction)
 
 def findClipIndexInsideEffectBlock(currEffectObjs, clipObjs):
@@ -223,6 +223,7 @@ def applyEffects(clips, clipObjs):
                 effectObjs = entry['effectObjs']
                 # print f, effectObjs, clips[clipIndex]
                 clips[clipIndex] = f(effectObjs, clips[clipIndex])
+                print f, effectObjs, clipIndex
 
                 functionIndex = effectsFunctions.index(f)
                 circleSize = 10 * effectIndex + VIDEO_RADIUS
@@ -250,7 +251,7 @@ def drawVideoBoxesAndLines(clipObjs, clips, startxpos):
     for i in range(len(clipObjs)):
         video = clips[i].get_frame(0)
         obj = clipObjs[i]
-        pg.draw.circle(screen, WHITE, (int(obj.xpos * CANVAS_WIDTH + 25), int(obj.ypos * CANVAS_HEIGHT + 25)), VIDEO_RADIUS)
+        pg.draw.circle(screen, BLACK, (int(obj.xpos * CANVAS_WIDTH + 25), int(obj.ypos * CANVAS_HEIGHT + 25)), VIDEO_RADIUS)
         imdisplay(video, x=obj.xpos * CANVAS_WIDTH, y=obj.ypos * CANVAS_HEIGHT)
         if obj.xpos < startxpos:
             drawArrow(prevxpos + 50, prevypos + 25, obj.xpos * CANVAS_WIDTH, obj.ypos * CANVAS_HEIGHT + 25, GRAY)
@@ -268,16 +269,17 @@ def concatenate(clipFromPointer=False):
         for i in range(100):
             tracking.update()
 
-        print sum(1 for _ in tracking.objects()),'clips found!'
-        objects = sorted(tracking.objects(), key=lambda x: x.xpos)
-        print 'clip order:', [obj.id for obj in objects]
+        print sum(1 for _ in tracking.objects()),'blocks found!'
+        objects = sorted(tracking.objects(), key=lambda x: x.id)
+        print 'blocks order:', [obj.id for obj in objects]
 
         clips = []
         clipObjs = []
         effectObjs = []
         startxpos = -1 # 0 indicates which clip to start with
 
-        for obj in objects:
+        for objIndex in range(len(objects)):
+            obj = objects[objIndex]
             if obj.id == 0:
                 startxpos = obj.xpos
             #if the fiducial has a clip associated with it
@@ -286,20 +288,27 @@ def concatenate(clipFromPointer=False):
 
                 print "id", obj.id, "angle", obj.angle
             else:
-                if obj.id in fiducialIdForClips:
-                    # the first imported clip is associated with fiducial 1 since 0 is the seeker
-                    fileClip = VideoFileClip(importedClipNames[fiducialIdForClips.index(obj.id)])
-                    clips.append(fileClip)
-                elif len(fiducialIdForClips) < len(importedClipNames):
-                    # associate a new clip with this fiducial
-                    fiducialIdForClips.append(obj.id)
-                    fileClip = VideoFileClip(importedClipNames[fiducialIdForClips.index(obj.id)])
-                    clips.append(fileClip)
-                else:
-                    imgClip = ImageClip("no-video-icon.jpg", duration=1.5).on_color()
-                    clips.append(CompositeVideoClip([imgClip]).set_fps(25))
-                clipObjs.append(obj)
+                prevObj = objects[objIndex - 1]
+                if obj.id == prevObj.id + 1 and obj.id % 2 == numEffectsIds % 2:
+                    obj.xpos = (obj.xpos + prevObj.xpos) / 2
+                    obj.ypos = (obj.ypos + prevObj.ypos) / 2
+                    clipObjs.append(obj)
 
+        clipObjs = sorted(clipObjs, key=lambda x: x.xpos)
+        for obj in clipObjs:
+            if obj.id in fiducialIdForClips:
+                # the first imported clip is associated with fiducial 1 since 0 is the seeker
+                fileClip = VideoFileClip(importedClipNames[fiducialIdForClips.index(obj.id)])
+                clips.append(fileClip)
+            elif len(fiducialIdForClips) < len(importedClipNames):
+                # associate a new clip with this fiducial
+                fiducialIdForClips.append(obj.id)
+                fileClip = VideoFileClip(importedClipNames[fiducialIdForClips.index(obj.id)])
+                clips.append(fileClip)
+            else:
+                imgClip = ImageClip("no-video-icon.jpg", duration=1.5).on_color()
+                clips.append(CompositeVideoClip([imgClip]).set_fps(25))
+                
         updateEffects(effectObjs, clipObjs)
         applyEffects(clips, clipObjs)
         drawVideoBoxesAndLines(clipObjs, clips, startxpos)
