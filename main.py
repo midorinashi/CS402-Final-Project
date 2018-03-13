@@ -40,9 +40,13 @@ screen = pg.display.set_mode(screensize)
 pg.display.set_caption("VideoBlox")
 
 def initScreen():
+    global screen
+    modes = pg.display.list_modes()
+    if modes:
+        screen = pg.display.set_mode(modes[0], pg.FULLSCREEN)
+        CANVAS_WIDTH, CANVAS_HEIGHT = modes[0]
     screen.fill(BLACK)
     pg.display.flip()
-    pg.display.toggle_fullscreen()
 
 # credit to https://www.daniweb.com/programming/software-development/code/216688/file-list-by-date-python
 def importClips():
