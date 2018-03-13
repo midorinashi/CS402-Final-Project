@@ -16,8 +16,8 @@ from pynput import keyboard
 import os, glob, math, time, sys, copy
 
 # all screen sizes for testing, can play with this later
-CANVAS_WIDTH = 720
-CANVAS_HEIGHT = 460
+CANVAS_WIDTH = 800
+CANVAS_HEIGHT = 600
 
 # define colors
 BLACK = (0, 0, 0)
@@ -139,8 +139,8 @@ Basic - for reverse      One slider          Two sliders
 |_______________|     |_______________|   |_______________|   
 '''
 
-effectsFunctions = [reverse, changeSpeed, changeBrightness, trimClip, addText]
-fiducialsPerFunction = [2, 3, 3, 4, 2]
+effectsFunctions = [reverse, changeSpeed, changeBrightness, trimClip] #, addText]
+fiducialsPerFunction = [2, 3, 3, 4] #, 2]
 colorForFunction = [(255,255,100), (255, 100, 255), (200, 200, 200), (100, 255, 255), (100, 100, 255)]
 numEffectsIds = sum(fiducialsPerFunction)
 SPECIAL_FIDUCIALS = 3 # 0 for seek, 1-2 for preview
@@ -228,7 +228,7 @@ def updateEffects(effectObjs, clipObjs):
 
 ONE_INCH = 35 #also equal to the video radius
 VIDEO_WIDTH = 50
-def applyEffects(clips, clipObjs):
+def applyEffects(clips, clipObjs, updated=True):
     print "effectsForClips:", effectsForClips
     for clipIndex in range(len(clipObjs)):
         clipObj = clipObjs[clipIndex]
@@ -240,8 +240,9 @@ def applyEffects(clips, clipObjs):
                 f = entry['func']
                 effectObjs = entry['effectObjs']
                 # print f, effectObjs, clips[clipIndex]
-                clips[clipIndex] = f(effectObjs, clips[clipIndex])
-                print "applying effect:", f, effectObjs, clipIndex
+                if updated:
+                    clips[clipIndex] = f(effectObjs, clips[clipIndex])
+                    print "applying effect:", f, effectObjs, clipIndex
 
                 functionIndex = effectsFunctions.index(f)
                 circleSize = ONE_INCH / 2 * effectIndex + 2 * ONE_INCH # one inch for the video radius, one inch for the video border
@@ -332,8 +333,8 @@ def fetchClips(clipFromPointer=False, objects=None, updated=True):
         if updated:
             updateVideoClips(clipObjs, clips)
             updateEffects(effectObjs, clipObjs)
-            applyEffects(clips, clipObjs)
-
+        
+        applyEffects(clips, clipObjs, updated)
         drawVideoBoxesAndLines(clipObjs, clips, startxpos)
 
         #when playing, play starting from fiducial 0 if it's on the screen
