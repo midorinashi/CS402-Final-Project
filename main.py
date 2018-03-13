@@ -37,14 +37,14 @@ imagesForClips = {} # cache that maps fiducial IDs to image previews
 # initialize screen
 pg.init()
 screen = pg.display.set_mode(screensize)
+# global screen
+modes = pg.display.list_modes()
+if modes:
+    screen = pg.display.set_mode(modes[0], pg.FULLSCREEN)
+    CANVAS_WIDTH, CANVAS_HEIGHT = modes[0]
 pg.display.set_caption("VideoBlox")
 
 def initScreen():
-    global screen
-    modes = pg.display.list_modes()
-    if modes:
-        screen = pg.display.set_mode(modes[0], pg.FULLSCREEN)
-        CANVAS_WIDTH, CANVAS_HEIGHT = modes[0]
     screen.fill(BLACK)
     pg.display.flip()
 
