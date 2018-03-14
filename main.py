@@ -18,7 +18,7 @@ import os, glob, math, time, sys, copy
 # all screen sizes for testing, can play with this later
 CANVAS_WIDTH = 800
 CANVAS_HEIGHT = 600
-fullscreen = False
+fullscreen = True
 
 # define colors
 BLACK = (0, 0, 0)
@@ -467,20 +467,24 @@ def preview(clips, previewObj, clipObjs):
         playClipAtBlock(clip, previewObj)
 
 def play(clips, previewObj, clipObjs, actionObj):
+    initScreen()
     print clips, previewObj
     if clips != None:
-        pg.draw.circle(screen, WHITE, (int(actionObj.xpos * CANVAS_WIDTH), int(actionObj.ypos * CANVAS_HEIGHT)), 2 * ONE_INCH)
+        pg.draw.circle(screen, WHITE, (int(actionObj.xpos * CANVAS_WIDTH), int(actionObj.ypos * CANVAS_HEIGHT)), ONE_INCH)
         preview(clips, previewObj, clipObjs)
-        pg.draw.circle(screen, BLACK, (int(actionObj.xpos * CANVAS_WIDTH), int(actionObj.ypos * CANVAS_HEIGHT)), 2 * ONE_INCH)
-
+        pg.draw.circle(screen, BLACK, (int(actionObj.xpos * CANVAS_WIDTH), int(actionObj.ypos * CANVAS_HEIGHT)), ONE_INCH)
+        pg.display.flip()
 
 def save(clips, previewObj, clipObjs, actionObj):
     if clips != None:
-        pg.draw.circle(screen, WHITE, (int(actionObj.xpos * CANVAS_WIDTH), int(actionObj.ypos * CANVAS_HEIGHT)), 2 * ONE_INCH)
+        pg.draw.circle(screen, WHITE, (int(actionObj.xpos * CANVAS_WIDTH), int(actionObj.ypos * CANVAS_HEIGHT)), ONE_INCH)
+        pg.display.flip()
+        time.sleep(0.5)
         clip = concatenate(clips)
         #the default video file encodes audio in a way quicktime won't play, so we add these params
         clip.write_videofile("video.mp4", codec="libx264", temp_audiofile='temp-audio.m4a', remove_temp=True, audio_codec='aac')
-        pg.draw.circle(screen, BLACK, (int(actionObj.xpos * CANVAS_WIDTH), int(actionObj.ypos * CANVAS_HEIGHT)), 2 * ONE_INCH)
+        pg.draw.circle(screen, BLACK, (int(actionObj.xpos * CANVAS_WIDTH), int(actionObj.ypos * CANVAS_HEIGHT)), ONE_INCH)
+        #pg.display.flip()
 
 def trackingChanged(one, two):
     for i in range(len(one)):
@@ -489,6 +493,12 @@ def trackingChanged(one, two):
             one[i].ypos != two[i].ypos):
             return True
     return False
+
+def doAction(clips, previewObj, clipObjs, actionObj):
+    if actionObj and actionObj.id == 214:
+        save(clips, previewObj, clipObjs, actionObj)
+    elif actionObj and actionObj.id == 215:
+        play(clips, previewObj, clipObjs, actionObj)
 
 tracking = tuio.Tracking()
 print "loaded profiles:", tracking.profiles.keys()
@@ -512,15 +522,16 @@ while True:
         initScreen()
         clips, previewObj, clipObjs, actionObj = fetchClips(objects=objects)
         prevObjects = copy.deepcopy(objects)
+        doAction(clips, previewObj, clipObjs, actionObj)
     elif trackingChanged(prevObjects, objects):
         # same blocks but moved around, use cached images
         initScreen()
         clips, previewObj, clipObjs, actionObj = fetchClips(objects=objects, updated=False)
         prevObjects = copy.deepcopy(objects)
-    if actionObj.id == 214:
-        save(clips, previewObj, clipObjs, actionObj)
-    elif actionObj.id == 215:
-        play(clips, previewObj, clipObjs, actionObj)
+        doAction(clips, previewObj, clipObjs, actionObj)
+    for event in pg.event.get():
+        if event.type == pg.KEYDOWN and pg.key.name(event.key) == 'escape':
+            sys.exit(0)
 
 # all of our old key listener code lol
 # listener = keyboard.Listener(
