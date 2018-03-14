@@ -15,10 +15,13 @@ from pynput import keyboard
 
 import os, glob, math, time, sys, copy
 
+import matplotlib.pyplot as plt
+import numpy as np
+
 # all screen sizes for testing, can play with this later
 CANVAS_WIDTH = 800
 CANVAS_HEIGHT = 600
-fullscreen = True
+fullscreen = False
 
 # define colors
 BLACK = (0, 0, 0)
@@ -117,6 +120,8 @@ def changeBrightness(effectObjs, clip):
 def trimClip(effectObjs, clip):
     startVal = scaledDistance(effectObjs[1], effectObjs[2])
     endVal = scaledDistance(effectObjs[1], effectObjs[3])
+    if startVal > endVal:
+        startVal, endVal = endVal, startVal
     return clip.subclip(startVal * clip.duration, endVal * clip.duration)
 
 # currently adds text to bottom of video based on keyboard input
@@ -141,15 +146,16 @@ Basic - for reverse      One slider          Two sliders
 | |           | |     | |           | |   | |           | |   
 | |           | |     | |           | |   | |           | |   
 | |___________| |     | |___________| |   | |___________| |   
-|              2|     |  --3-------- 2|   |  ---3----4-- 2|   
+|2             3|     |2 --4-------- 3|   |2 ---4----5-- 3|   
 |_______________|     |_______________|   |_______________|   
 '''
 
 effectsFunctions = [reverse, changeSpeed, changeBrightness, trimClip] #, addText]
-fiducialsPerFunction = [2, 3, 3, 4] #, 2]
+fiducialsPerFunction = [1, 1, 1, 2] #, 2]
 colorForFunction = [(255,255,100), (255, 100, 255), (200, 200, 200), (100, 255, 255), (100, 100, 255)]
 numEffectsIds = sum(fiducialsPerFunction)
 SPECIAL_FIDUCIALS = 3 # 0 for seek, 1-2 for preview
+VIDEO_EFFECT_PANEL_FIDUCIALS = 3
 
 def updateVideoClips(clipObjs, clips):
     for obj in clipObjs:
@@ -169,8 +175,8 @@ def updateVideoClips(clipObjs, clips):
 def findClipIndexInsideEffectBlock(currEffectObjs, clipObjs):
     top = currEffectObjs[0].ypos
     left = currEffectObjs[0].xpos
-    bottom = currEffectObjs[1].ypos
-    right = currEffectObjs[1].xpos
+    bottom = currEffectObjs[2].ypos
+    right = currEffectObjs[2].xpos
 
     #if the block has been rotated more than 180, make the lesser values top/left
     if top > bottom:
@@ -196,6 +202,47 @@ def findClipIndexInsideEffectBlock(currEffectObjs, clipObjs):
             return index
     return None
 
+# 50 pixels = 7/8 inch on TUI
+ONE_INCH = int(35 *(8.0/7) * (8.0/7) * (4.0/3)) #also equal to the video radius
+VIDEO_WIDTH = int(50 *(8.0/7) * (8.0/7) * (4.0/3))
+SLIDER_HEIGHT = 1.5 * ONE_INCH
+def getRect(videoEffectPanel):
+    x1 = videoEffectPanel[1].xpos * CANVAS_WIDTH
+    y1 = videoEffectPanel[1].ypos * CANVAS_HEIGHT
+    x2 = videoEffectPanel[2].xpos * CANVAS_WIDTH
+    y2 = videoEffectPanel[2].ypos * CANVAS_HEIGHT
+    if x2 == x1:
+        y3 = y1
+        y4 = y2
+        if y2 < y1:
+            x3 = x1 + SLIDER_HEIGHT
+            x4 = x1 + SLIDER_HEIGHT
+        else:
+            x3 = x1 - SLIDER_HEIGHT
+            x4 = x1 - SLIDER_HEIGHT
+    elif y2 == y1:
+        x3 = x1
+        x4 = x2
+        if x2 > x1:
+            y3 = y1 + SLIDER_HEIGHT
+            y4 = y1 + SLIDER_HEIGHT
+        else:
+            y3 = y1 - SLIDER_HEIGHT
+            y4 = y1 - SLIDER_HEIGHT
+    else:
+        m = (y2 - y1)/(x2 - x1)
+
+        x3 = x1 + math.sqrt(SLIDER_HEIGHT**2 / (1 + 1 / (m**2)))
+        if y1 < y2:
+            x3 = x1 - math.sqrt(SLIDER_HEIGHT**2 / (1 + 1 / (m**2)))
+        y3 = -1/m * (x3 - x1) + y1
+
+        x4 = x2 + math.sqrt(SLIDER_HEIGHT**2 / (1 + 1 / (m**2)))
+        if y1 < y2:
+            x4 = x2 - math.sqrt(SLIDER_HEIGHT**2 / (1 + 1 / (m**2)))
+        y4 = -1/m * (x4 - x2) + y2
+    return ((x1, y1), (x2, y2), (x4, y4), (x3, y3))
+
 def updateEffects(effectObjs, clipObjs):
     effectObjIds = [effectObj.id for effectObj in effectObjs]
     print effectObjIds
@@ -203,40 +250,89 @@ def updateEffects(effectObjs, clipObjs):
 
     if len(effectsFunctions) != len(fiducialsPerFunction):
         print "Effect functions are not properly assigned fiducials"
-        return
+        return False
 
-    for effectIndex in range(len(effectsFunctions)):
-        currEffectObjs = []
-        for fiducialId in range(startId + SPECIAL_FIDUCIALS - 1, 
-                                startId + SPECIAL_FIDUCIALS - 1 + fiducialsPerFunction[effectIndex]):
+    if len(effectObjs) < VIDEO_EFFECT_PANEL_FIDUCIALS + 1:
+        return False
+
+    videoEffectPanel = []
+    for index in range(VIDEO_EFFECT_PANEL_FIDUCIALS):
             #if not all fiducial Ids are 
-            if fiducialId in effectObjIds:
-                currEffectObjs.append(effectObjs[effectObjIds.index(fiducialId)])
+            if effectObjIds[index] == SPECIAL_FIDUCIALS + index:
+                videoEffectPanel.append(effectObjs[index])
             else:
                 break
-        else:
-            # print "all clips on screen for effect ", effectIndex
-            # print currEffectObjs
-            clipIndex = findClipIndexInsideEffectBlock(currEffectObjs, clipObjs)
-            # print "clipIndex", clipIndex, effectsForClips
-            if clipIndex != None:
-                fiducialId = clipObjs[clipIndex].id
-                # print "applying ", effectIndex, " effect to clip id ", clipObjs[clipIndex].id
-                if fiducialId not in effectsForClips:
-                    effectsForClips[fiducialId] = []
-                for index in range(len(effectsForClips[fiducialId])):
-                    if effectsForClips[fiducialId][index]['func'] == effectsFunctions[effectIndex]:
-                        del effectsForClips[fiducialId][index]
-                        break
-                effectsForClips[fiducialId].append({'func': effectsFunctions[effectIndex],
-                                                    'effectObjs': currEffectObjs})
-        startId += fiducialsPerFunction[effectIndex]
+    else:
+        clipIndex = findClipIndexInsideEffectBlock(videoEffectPanel, clipObjs)
+        if clipIndex != None:
+            fiducialId = clipObjs[clipIndex].id
 
-# 50 pixels = 7/8 inch on TUI
-ONE_INCH = int(35 *(8.0/7) * (8.0/7) * (4.0/3)) #also equal to the video radius
-VIDEO_WIDTH = int(50 *(8.0/7) * (8.0/7) * (4.0/3))
+            ((x1, y1), (x2, y2), (x4, y4), (x3, y3)) = getRect(videoEffectPanel)
+            points = ((x1, y1), (x2, y2), (x4, y4), (x3, y3))
+            print "points", points
+            # pg.draw.polygon(screen, WHITE, points)
+
+            # pg.draw.line(screen, (0,200,0), (x1, y1), (x2, y2),3)
+            # pg.draw.line(screen, (0,200,0), (x4, y4), (x2, y2),3)
+            # pg.draw.line(screen, (0,200,0), (x4, y4), (x3, y3),3)
+            # pg.draw.line(screen, (0,200,0), (x1, y1), (x3, y3),3)
+
+            objsInRange = []
+            for index in range(VIDEO_EFFECT_PANEL_FIDUCIALS, len(effectObjs)):
+                obj = effectObjs[index]
+                x = obj.xpos * CANVAS_WIDTH
+                y = obj.ypos * CANVAS_HEIGHT
+                print (x, y)
+                # pg.draw.circle(screen, (200, 0, 0), (int(x), int(y)), 2)
+                if x1 == x2:
+                    if (x1 < x < x3 or x3 < x < x1) and (y1 < y < y2 or y2 < y < y1):
+                        objsInRange.append(obj)
+                elif x1 == x3:
+                    if (x1 < x < x2 or x2 < x < x1) and (y1 < y < y3 or y3 < y < y1):
+                        objsInRange.append(obj)
+                else:
+                    if (((y - y2 > (y2 - y1)/(x2 - x1)*(x - x2) and y - y3 < (y3 - y4)/(x3 - x4)*(x - x3)) or \
+                         (y - y2 < (y2 - y1)/(x2 - x1)*(x - x2) and y - y3 > (y3 - y4)/(x3 - x4)*(x - x3))) and \
+                        ((y - y3 > (y3 - y1)/(x3 - x1)*(x - x3) and y - y2 < (y2 - y4)/(x2 - x4)*(x - x2)) or \
+                         (y - y3 < (y3 - y1)/(x3 - x1)*(x - x3) and y - y2 > (y2 - y4)/(x2 - x4)*(x - x2)))):
+                        objsInRange.append(obj)
+
+            if fiducialId not in effectsForClips:
+                effectsForClips[fiducialId] = []
+            print "objsInRange", objsInRange
+            if len(objsInRange) == 1:
+                obj = objsInRange[0]
+                if obj.id < SPECIAL_FIDUCIALS + VIDEO_EFFECT_PANEL_FIDUCIALS + 3:
+                    effectIndex = obj.id - (SPECIAL_FIDUCIALS + VIDEO_EFFECT_PANEL_FIDUCIALS)
+
+                    for index in range(len(effectsForClips[fiducialId])):
+                        if effectsForClips[fiducialId][index]['func'] == effectsFunctions[effectIndex]:
+                            del effectsForClips[fiducialId][index]
+                            break
+                    print "applying ", effectIndex, " effect to clip id ", clipObjs[clipIndex].id, "based on fiducial", obj.id
+                    effectsForClips[fiducialId].append({'func': effectsFunctions[effectIndex],
+                                                        'effectObjs': [videoEffectPanel[1], videoEffectPanel[2], obj]})
+                    return True
+            elif len(objsInRange) == 2:
+                objIdsInRange = [obj.id for obj in objsInRange]
+                if SPECIAL_FIDUCIALS + VIDEO_EFFECT_PANEL_FIDUCIALS + 3 in objIdsInRange and \
+                   SPECIAL_FIDUCIALS + VIDEO_EFFECT_PANEL_FIDUCIALS + 4 in objIdsInRange:
+                    effectIndex = 3
+
+                    for index in range(len(effectsForClips[fiducialId])):
+                        if effectsForClips[fiducialId][index]['func'] == effectsFunctions[effectIndex]:
+                            del effectsForClips[fiducialId][index]
+                            break
+                    print "applying ", effectIndex, " effect to clip id ", clipObjs[clipIndex].id
+                    effectsForClips[fiducialId].append({'func': effectsFunctions[effectIndex],
+                                                        'effectObjs': [videoEffectPanel[1], videoEffectPanel[2], objsInRange[0], objsInRange[1]]})
+                    return True
+            # pg.display.flip()
+            print effectsForClips
+    return False
+
 def applyEffects(clips, clipObjs, updated=True):
-    print "effectsForClips:", effectsForClips
+    # print "effectsForClips:", effectsForClips
     for clipIndex in range(len(clipObjs)):
         clipObj = clipObjs[clipIndex]
         fiducialId = clipObj.id
@@ -339,10 +435,10 @@ def fetchClips(clipFromPointer=False, objects=None, updated=True):
                     previewObj = obj
             elif obj.id == 214 or obj.id == 215:
                 actionObj = obj
-            elif obj.id < numEffectsIds + SPECIAL_FIDUCIALS:
+            elif obj.id < numEffectsIds + SPECIAL_FIDUCIALS + VIDEO_EFFECT_PANEL_FIDUCIALS:
                 effectObjs.append(obj)
 
-                print "id", obj.id, "angle", obj.angle
+                #print "id", obj.id, "angle", obj.angle
             else:
                 prevObj = objects[objIndex - 1]
                 if obj.id == prevObj.id + 1 and obj.id % 2 == 0:
@@ -351,11 +447,11 @@ def fetchClips(clipFromPointer=False, objects=None, updated=True):
                     clipObjs.append(obj)
 
         clipObjs = sorted(clipObjs, key=lambda x: x.xpos)
+        updatedEffects = updateEffects(effectObjs, clipObjs)
+        updated = updated or updatedEffects
         if updated:
             updateVideoClips(clipObjs, clips)
-            updateEffects(effectObjs, clipObjs)
-            applyEffects(clips, clipObjs)
-
+        applyEffects(clips, clipObjs, updated)
         drawVideoBoxesAndLines(clipObjs, clips, seekObj)
 
         #when playing, play starting from fiducial 0 if it's on the screen
