@@ -292,8 +292,8 @@ def drawVideoBoxesAndLines(clipObjs, clips, seekObj):
             drawArrow(prevxpos + 2 * ONE_INCH, prevypos, 
                       obj.xpos * CANVAS_WIDTH - 2 * ONE_INCH, obj.ypos * CANVAS_HEIGHT, 
                       GRAY)
-        elif clipObjs[i - 1].xpos < startxpos:
-            drawArrow(seekObj.xpos, seekObj.ypos,
+        elif seekObj != None and (clipObjs[i - 1].xpos < startxpos or i == 0):
+            drawArrow(seekObj.xpos * CANVAS_WIDTH, seekObj.ypos * CANVAS_HEIGHT,
                       obj.xpos * CANVAS_WIDTH - 2 * ONE_INCH, obj.ypos * CANVAS_HEIGHT, 
                       GOLD)
             drawArrow(prevxpos + 2 * ONE_INCH, prevypos,
