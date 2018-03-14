@@ -230,8 +230,9 @@ def updateEffects(effectObjs, clipObjs):
                                                     'effectObjs': currEffectObjs})
         startId += fiducialsPerFunction[effectIndex]
 
-ONE_INCH = 35 #also equal to the video radius
-VIDEO_WIDTH = 50
+# 50 pixels = 7/8 inch on TUI
+ONE_INCH = int(35 *(8.0/7) * (4.0/3)) #also equal to the video radius
+VIDEO_WIDTH = int(50 *(8.0/7) * (4.0/3))
 def applyEffects(clips, clipObjs, updated=True):
     print "effectsForClips:", effectsForClips
     for clipIndex in range(len(clipObjs)):
@@ -249,7 +250,7 @@ def applyEffects(clips, clipObjs, updated=True):
                     print "applying effect:", f, effectObjs, clipIndex
 
                 functionIndex = effectsFunctions.index(f)
-                circleSize = ONE_INCH / 2 * effectIndex + 2 * ONE_INCH # one inch for the video radius, one inch for the video border
+                circleSize = int(ONE_INCH / 2 * effectIndex + 2 * ONE_INCH) # one inch for the video radius, one inch for the video border
                 color = colorForFunction[functionIndex]
                 pg.draw.circle(screen, color, (int(clipObj.xpos * CANVAS_WIDTH), int(clipObj.ypos * CANVAS_HEIGHT)), circleSize)
 
@@ -267,10 +268,14 @@ def imdisplay(imarray, width=VIDEO_WIDTH, height=VIDEO_WIDTH, x=0, y=0):
     a = pg.transform.scale(a, (width, height))
     screen.blit(a, (x, y))
 
-def drawVideoBoxesAndLines(clipObjs, clips, startxpos):
+def drawVideoBoxesAndLines(clipObjs, clips, seekObj):
     """draws interface for screen"""
     prevxpos =  -ONE_INCH
     prevypos = CANVAS_HEIGHT / 2.0
+    if seekObj == None:
+        startxpos = -1
+    else:
+        startxpos = seekObj.xpos
     for i in range(len(clipObjs)):
         obj = clipObjs[i]
         if clips:
@@ -278,12 +283,18 @@ def drawVideoBoxesAndLines(clipObjs, clips, startxpos):
             imagesForClips[obj.id] = video
         else:
             video = imagesForClips[obj.id]
-        pg.draw.circle(screen, BLACK, (int(obj.xpos * CANVAS_WIDTH), int(obj.ypos * CANVAS_HEIGHT)), 2 * ONE_INCH) # one inch for the video radius, one inch for the video border
+        pg.draw.circle(screen, BLACK, (int(obj.xpos * CANVAS_WIDTH), int(obj.ypos * CANVAS_HEIGHT)), int(2 * ONE_INCH)) # one inch for the video radius, one inch for the video border
         imdisplay(video, x=obj.xpos * CANVAS_WIDTH - VIDEO_WIDTH / 2, y=obj.ypos * CANVAS_HEIGHT - VIDEO_WIDTH / 2)
         if obj.xpos < startxpos:
             drawArrow(prevxpos + 2 * ONE_INCH, prevypos, 
                       obj.xpos * CANVAS_WIDTH - 2 * ONE_INCH, obj.ypos * CANVAS_HEIGHT, 
                       GRAY)
+        elif clipObjs[i - 1].xpos < startxpos:
+            drawArrow(seekObj.xpos, seekObj.ypos,
+                      obj.xpos * CANVAS_WIDTH - 2 * ONE_INCH, obj.ypos * CANVAS_HEIGHT, 
+                      GOLD)
+            drawArrow(prevxpos + 2 * ONE_INCH, prevypos,
+                      obj.xpos * CANVAS_WIDTH - 2 * ONE_INCH, obj.ypos * CANVAS_HEIGHT)
         else:
             drawArrow(prevxpos + 2 * ONE_INCH, prevypos,
                       obj.xpos * CANVAS_WIDTH - 2 * ONE_INCH, obj.ypos * CANVAS_HEIGHT)
@@ -308,13 +319,13 @@ def fetchClips(clipFromPointer=False, objects=None, updated=True):
         clips = []
         clipObjs = []
         effectObjs = []
-        startxpos = -1 # 0 indicates which clip to start with
+        seekObj = None # 0 indicates which clip to start with
         previewObj = None
 
         for objIndex in range(len(objects)):
             obj = objects[objIndex]
             if obj.id == 0:
-                startxpos = obj.xpos
+                seekObj = obj
             #if the fiducial has a clip associated with it
             elif obj.id == 2:
                 prevObj = objects[objIndex - 1]
@@ -337,13 +348,13 @@ def fetchClips(clipFromPointer=False, objects=None, updated=True):
         if updated:
             updateVideoClips(clipObjs, clips)
             updateEffects(effectObjs, clipObjs)
-        
-        applyEffects(clips, clipObjs, updated)
-        drawVideoBoxesAndLines(clipObjs, clips, startxpos)
+            applyEffects(clips, clipObjs)
+
+        drawVideoBoxesAndLines(clipObjs, clips, seekObj)
 
         #when playing, play starting from fiducial 0 if it's on the screen
-        if clipFromPointer and startxpos != -1:
-            clips = [clip for obj,clip in zip(clipObjs,clips) if obj.xpos > startxpos - POINTER_OFFSET]
+        if clipFromPointer and seekObj != None:
+            clips = [clip for obj,clip in zip(clipObjs,clips) if obj.xpos > seekObj.xpos - POINTER_OFFSET]
 
         #concatenate all clips
         if len(clips) > 0:
