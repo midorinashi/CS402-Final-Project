@@ -319,6 +319,7 @@ def fetchClips(clipFromPointer=False, objects=None, updated=True):
         effectObjs = []
         seekObj = None # 0 indicates which clip to start with
         previewObj = None
+        actionObj = None
 
         for objIndex in range(len(objects)):
             obj = objects[objIndex]
@@ -331,6 +332,8 @@ def fetchClips(clipFromPointer=False, objects=None, updated=True):
                     obj.xpos = (obj.xpos + prevObj.xpos) / 2
                     obj.ypos = (obj.ypos + prevObj.ypos) / 2
                     previewObj = obj
+            elif obj.id == 214 or obj.id == 215:
+                actionObj = obj
             elif obj.id < numEffectsIds + SPECIAL_FIDUCIALS:
                 effectObjs.append(obj)
 
@@ -357,11 +360,11 @@ def fetchClips(clipFromPointer=False, objects=None, updated=True):
         #concatenate all clips
         if len(clips) > 0:
             print '# clips', len(clips)
-            return clips, previewObj, clipObjs
+            return clips, previewObj, clipObjs, actionObj
 
     except KeyboardInterrupt:
         tracking.stop()
-    return None, None, None
+    return None, None, None, None
 
 def concatenate(clips):
     cvc = concatenate_videoclips(clips, method="compose")
@@ -458,32 +461,21 @@ def preview(clips, previewObj, clipObjs):
         clip = concatenate(clips)
         playClipAtBlock(clip, previewObj)
 
-def play():
-    clips, previewObj, clipObjs = fetchClips(clipFromPointer=True)
+def play(clips, previewObj, clipObjs, actionObj):
     print clips, previewObj
     if clips != None:
+        pg.draw.circle(screen, WHITE, (int(actionObj.xpos * CANVAS_WIDTH), int(actionObj.ypos * CANVAS_HEIGHT)), 2 * ONE_INCH)
         preview(clips, previewObj, clipObjs)
+        pg.draw.circle(screen, BLACK, (int(actionObj.xpos * CANVAS_WIDTH), int(actionObj.ypos * CANVAS_HEIGHT)), 2 * ONE_INCH)
 
 
-def save():
-    clips, previewObj, clipObjs = fetchClips()
+def save(clips, previewObj, clipObjs, actionObj):
     if clips != None:
+        pg.draw.circle(screen, WHITE, (int(actionObj.xpos * CANVAS_WIDTH), int(actionObj.ypos * CANVAS_HEIGHT)), 2 * ONE_INCH)
         clip = concatenate(clips)
         #the default video file encodes audio in a way quicktime won't play, so we add these params
         clip.write_videofile("video.mp4", codec="libx264", temp_audiofile='temp-audio.m4a', remove_temp=True, audio_codec='aac')
-
-
-def on_press(key):
-    if key == 'space':
-        initScreen()
-        play()
-    if key == 'escape':
-        # Stop listener
-        print 'Goodbye!'
-        sys.exit(0)
-    print key, 'pressed'
-    if key == 's':
-        save()
+        pg.draw.circle(screen, BLACK, (int(actionObj.xpos * CANVAS_WIDTH), int(actionObj.ypos * CANVAS_HEIGHT)), 2 * ONE_INCH)
 
 def trackingChanged(one, two):
     for i in range(len(one)):
@@ -506,22 +498,24 @@ while True:
         tracking.update()
 
     objects = sorted(tracking.objects(), key=lambda x: x.id)
+    actionObj = None
     # update display whenever tracking changes
     if len(prevObjects) != len(objects):
         # clip or effect block added, re-load all videos
         print len(objects),'blocks found!'
         print 'blocks order:', [obj.id for obj in objects]
         initScreen()
-        fetchClips(objects=objects)
+        clips, previewObj, clipObjs, actionObj = fetchClips(objects=objects)
         prevObjects = copy.deepcopy(objects)
     elif trackingChanged(prevObjects, objects):
         # same blocks but moved around, use cached images
         initScreen()
-        fetchClips(objects=objects, updated=False)
+        clips, previewObj, clipObjs, actionObj = fetchClips(objects=objects, updated=False)
         prevObjects = copy.deepcopy(objects)
-    for event in pg.event.get():
-        if event.type == pg.KEYDOWN:
-            on_press(pg.key.name(event.key))
+    if actionObj.id == 214:
+        save(clips, previewObj, clipObjs, actionObj)
+    elif actionObj.id == 215:
+        play(clips, previewObj, clipObjs, actionObj)
 
 # all of our old key listener code lol
 # listener = keyboard.Listener(
