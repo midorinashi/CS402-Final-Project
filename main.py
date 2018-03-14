@@ -18,6 +18,7 @@ import os, glob, math, time, sys, copy
 # all screen sizes for testing, can play with this later
 CANVAS_WIDTH = 800
 CANVAS_HEIGHT = 600
+fullscreen = False
 
 # define colors
 BLACK = (0, 0, 0)
@@ -38,10 +39,11 @@ imagesForClips = {} # cache that maps fiducial IDs to image previews
 pg.init()
 screen = pg.display.set_mode(screensize)
 # global screen
-modes = pg.display.list_modes()
-if modes:
-    screen = pg.display.set_mode(modes[0], pg.FULLSCREEN)
-    CANVAS_WIDTH, CANVAS_HEIGHT = modes[0]
+if fullscreen:
+    modes = pg.display.list_modes()
+    if modes:
+        screen = pg.display.set_mode(modes[0], pg.FULLSCREEN)
+        CANVAS_WIDTH, CANVAS_HEIGHT = modes[0]
 pg.display.set_caption("VideoBlox")
 
 def initScreen():
@@ -231,8 +233,8 @@ def updateEffects(effectObjs, clipObjs):
         startId += fiducialsPerFunction[effectIndex]
 
 # 50 pixels = 7/8 inch on TUI
-ONE_INCH = int(35 *(8.0/7) * (4.0/3)) #also equal to the video radius
-VIDEO_WIDTH = int(50 *(8.0/7) * (4.0/3))
+ONE_INCH = int(35 *(8.0/7) * (8.0/7) * (4.0/3)) #also equal to the video radius
+VIDEO_WIDTH = int(50 *(8.0/7) * (8.0/7) * (4.0/3))
 def applyEffects(clips, clipObjs, updated=True):
     print "effectsForClips:", effectsForClips
     for clipIndex in range(len(clipObjs)):
@@ -259,8 +261,9 @@ def applyEffects(clips, clipObjs, updated=True):
                 effectIndex -= 1
 
 def drawArrow(startx, starty, endx, endy, color=WHITE):
-    pg.draw.polygon(screen, color, ((startx, starty - 5), (startx, starty + 5), (endx - 10, endy + 5), (endx - 10, endy + 10), (endx, endy), (endx - 10, endy - 10), (endx - 10, endy - 5)))
-    pg.draw.polygon(screen, BLACK, ((startx, starty - 5), (startx, starty + 5), (endx - 10, endy + 5), (endx - 10, endy + 10), (endx, endy), (endx - 10, endy - 10), (endx - 10, endy - 5)), 1)
+    points = ((startx, starty - 5), (startx, starty + 5), (endx - 20, endy + 5), (endx - 20, endy + 20), (endx, endy), (endx - 20, endy - 20), (endx - 20, endy - 5))
+    pg.draw.polygon(screen, color, points)
+    pg.draw.polygon(screen, BLACK, points, 1)
 
 def imdisplay(imarray, width=VIDEO_WIDTH, height=VIDEO_WIDTH, x=0, y=0):
     """Splashes the given image array on the given pygame screen """
