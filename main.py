@@ -28,6 +28,7 @@ BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 GOLD = (255, 223, 0)
 GRAY = (70,70,70)
+GREEN = (1, 102, 83)
 
 POINTER_OFFSET = 0.036
 screensize = (CANVAS_WIDTH, CANVAS_HEIGHT)
@@ -152,10 +153,11 @@ Basic - for reverse      One slider          Two sliders
 
 effectsFunctions = [reverse, changeSpeed, changeBrightness, trimClip] #, addText]
 fiducialsPerFunction = [1, 1, 1, 2] #, 2]
-colorForFunction = [(255,255,100), (255, 100, 255), (200, 200, 200), (100, 255, 255), (100, 100, 255)]
+colorForFunction = [(147, 102, 255), (247, 97, 17), (255, 63, 105), (45, 142, 142)]
 numEffectsIds = sum(fiducialsPerFunction)
 SPECIAL_FIDUCIALS = 3 # 0 for seek, 1-2 for preview
 VIDEO_EFFECT_PANEL_FIDUCIALS = 3
+FIRST_EFFECT_FIDUCIAL = 24
 
 def updateVideoClips(clipObjs, clips):
     for obj in clipObjs:
@@ -302,8 +304,8 @@ def updateEffects(effectObjs, clipObjs):
             print "objsInRange", objsInRange
             if len(objsInRange) == 1:
                 obj = objsInRange[0]
-                if obj.id < SPECIAL_FIDUCIALS + VIDEO_EFFECT_PANEL_FIDUCIALS + 3:
-                    effectIndex = obj.id - (SPECIAL_FIDUCIALS + VIDEO_EFFECT_PANEL_FIDUCIALS)
+                if obj.id < FIRST_EFFECT_FIDUCIAL + 3:
+                    effectIndex = obj.id - (FIRST_EFFECT_FIDUCIAL)
 
                     for index in range(len(effectsForClips[fiducialId])):
                         if effectsForClips[fiducialId][index]['func'] == effectsFunctions[effectIndex]:
@@ -315,8 +317,8 @@ def updateEffects(effectObjs, clipObjs):
                     return True
             elif len(objsInRange) == 2:
                 objIdsInRange = [obj.id for obj in objsInRange]
-                if SPECIAL_FIDUCIALS + VIDEO_EFFECT_PANEL_FIDUCIALS + 3 in objIdsInRange and \
-                   SPECIAL_FIDUCIALS + VIDEO_EFFECT_PANEL_FIDUCIALS + 4 in objIdsInRange:
+                if FIRST_EFFECT_FIDUCIAL + 3 in objIdsInRange and \
+                   FIRST_EFFECT_FIDUCIAL + 4 in objIdsInRange:
                     effectIndex = 3
 
                     for index in range(len(effectsForClips[fiducialId])):
@@ -391,7 +393,7 @@ def drawVideoBoxesAndLines(clipObjs, clips, seekObj):
         elif seekObj != None and (clipObjs[i - 1].xpos < startxpos or i == 0):
             drawArrow(seekObj.xpos * CANVAS_WIDTH, seekObj.ypos * CANVAS_HEIGHT,
                       obj.xpos * CANVAS_WIDTH - 2 * ONE_INCH, obj.ypos * CANVAS_HEIGHT, 
-                      GOLD)
+                      GREEN)
             drawArrow(prevxpos + 2 * ONE_INCH, prevypos,
                       obj.xpos * CANVAS_WIDTH - 2 * ONE_INCH, obj.ypos * CANVAS_HEIGHT)
         else:
@@ -435,7 +437,7 @@ def fetchClips(clipFromPointer=False, objects=None, updated=True):
                     previewObj = obj
             elif obj.id == 214 or obj.id == 215:
                 actionObj = obj
-            elif obj.id < numEffectsIds + SPECIAL_FIDUCIALS + VIDEO_EFFECT_PANEL_FIDUCIALS:
+            elif obj.id < numEffectsIds + FIRST_EFFECT_FIDUCIAL:
                 effectObjs.append(obj)
 
                 #print "id", obj.id, "angle", obj.angle
