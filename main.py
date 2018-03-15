@@ -153,7 +153,7 @@ Basic - for reverse      One slider          Two sliders
 
 effectsFunctions = [reverse, changeSpeed, changeBrightness, trimClip] #, addText]
 fiducialsPerFunction = [1, 1, 1, 2] #, 2]
-colorForFunction = [(147, 102, 255), (247, 97, 17), (255, 63, 105), (45, 142, 142)]
+colorForFunction = [(147, 102, 255), (247, 97, 17), (255, 132, 210), (45, 142, 142)]
 numEffectsIds = sum(fiducialsPerFunction)
 SPECIAL_FIDUCIALS = 3 # 0 for seek, 1-2 for preview
 VIDEO_EFFECT_PANEL_FIDUCIALS = 3
