@@ -21,7 +21,7 @@ import numpy as np
 # all screen sizes for testing, can play with this later
 CANVAS_WIDTH = 800
 CANVAS_HEIGHT = 600
-fullscreen = False
+fullscreen = True
 
 # define colors
 BLACK = (0, 0, 0)
@@ -521,8 +521,8 @@ def playClipAtBlock(clip, block, fps=15, audio=True, audio_fps=22050,
     width = VIDEO_WIDTH
     height = VIDEO_WIDTH
     if block.id == 2:
-        width = 300
-        height = clip.h * 300 / clip.w
+        width = 200
+        height = 200
     xpos = block.xpos * CANVAS_WIDTH - width / 2
     ypos = block.ypos * CANVAS_HEIGHT - height / 2
     imdisplay(img, width=width, height=height, x=xpos, y=ypos)
