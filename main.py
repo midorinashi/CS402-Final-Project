@@ -22,6 +22,7 @@ import numpy as np
 CANVAS_WIDTH = 800
 CANVAS_HEIGHT = 600
 fullscreen = False
+realdeal = True
 
 # define colors
 BLACK = (0, 0, 0)
@@ -93,14 +94,14 @@ def scaledDistance(obj1, obj2):
         return 1
     return scaledDist
 
-def reverse(effectObjs, clip):
+def reverse(clip):
     return clip.fx(vfx.time_mirror)
 
 #speeds up clips by up to a factor of 4 and slows down clips down to a factor of 0.25
 def changeSpeed(effectObjs, clip):
     # 0 degrees indicates normal speed
     speed = 1
-    val = scaledDistance(effectObjs[1], effectObjs[2])
+    val = effectObjs[0]
     #slow down - 0, .16, and .33 vals are .25, .5, and .75 respectively
     if val < .5:
         speed = (val * 3 / 2) + .25
@@ -113,14 +114,14 @@ def changeSpeed(effectObjs, clip):
     return clip.speedx(speed)
 
 def changeBrightness(effectObjs, clip):
-    val = scaledDistance(effectObjs[1], effectObjs[2])
+    val = effectObjs[0]
     brightness = val * 1.5
     return clip.fx(vfx.colorx, brightness)
 
 # could be replaced by fiducial glove
 def trimClip(effectObjs, clip):
-    startVal = scaledDistance(effectObjs[1], effectObjs[2])
-    endVal = scaledDistance(effectObjs[1], effectObjs[3])
+    startVal = effectObjs[0]
+    endVal = effectObjs[1]
     if startVal > endVal:
         startVal, endVal = endVal, startVal
     return clip.subclip(startVal * clip.duration, endVal * clip.duration)
@@ -157,7 +158,8 @@ colorForFunction = [(147, 102, 255), (247, 97, 17), (255, 132, 210), (45, 142, 1
 numEffectsIds = sum(fiducialsPerFunction)
 SPECIAL_FIDUCIALS = 3 # 0 for seek, 1-2 for preview
 VIDEO_EFFECT_PANEL_FIDUCIALS = 3
-FIRST_EFFECT_FIDUCIAL = 24
+FIRST_EFFECT_FIDUCIAL = 24 if realdeal else 6
+noVideoClip = ImageClip("no-video-icon.jpg", duration=1.5).on_color()
 
 def updateVideoClips(clipObjs, clips):
     for obj in clipObjs:
@@ -171,7 +173,7 @@ def updateVideoClips(clipObjs, clips):
             fileClip = VideoFileClip(importedClipNames[fiducialIdForClips.index(obj.id)])
             clips.append(fileClip)
         else:
-            imgClip = ImageClip("no-video-icon.jpg", duration=1.5).on_color()
+            imgClip = noVideoClip
             clips.append(CompositeVideoClip([imgClip]).set_fps(25))
 
 def findClipIndexInsideEffectBlock(currEffectObjs, clipObjs):
@@ -245,7 +247,7 @@ def getRect(videoEffectPanel):
         y4 = -1/m * (x4 - x2) + y2
     return ((x1, y1), (x2, y2), (x4, y4), (x3, y3))
 
-def updateEffects(effectObjs, clipObjs):
+def updateEffects(effectObjs, clipObjs, updated=False):
     effectObjIds = [effectObj.id for effectObj in effectObjs]
     print effectObjIds
     startId = 1 # tracks what's the first fiducial id associated with an effect, first effect fiducial is 1
@@ -305,16 +307,21 @@ def updateEffects(effectObjs, clipObjs):
                 if len(objsInRange) == 1:
                     obj = objsInRange[0]
                     if obj.id < FIRST_EFFECT_FIDUCIAL + 3:
-                        effectIndex = obj.id - (FIRST_EFFECT_FIDUCIAL)
+                        if obj.id != FIRST_EFFECT_FIDUCIAL or updated:
+                            effectIndex = obj.id - (FIRST_EFFECT_FIDUCIAL)
 
-                        for index in range(len(effectsForClips[fiducialId])):
-                            if effectsForClips[fiducialId][index]['func'] == effectsFunctions[effectIndex]:
-                                del effectsForClips[fiducialId][index]
-                                break
-                        print "applying ", effectIndex, " effect to clip id ", clipObjs[clipIndex].id, "based on fiducial", obj.id
-                        effectsForClips[fiducialId].append({'func': effectsFunctions[effectIndex],
-                                                            'effectObjs': [videoEffectPanel[1], videoEffectPanel[2], obj]})
-                        return True
+                            removingReverse = False
+                            for index in range(len(effectsForClips[fiducialId])):
+                                if effectsForClips[fiducialId][index]['func'] == effectsFunctions[effectIndex]:
+                                    if obj.id == FIRST_EFFECT_FIDUCIAL:
+                                        removingReverse = True
+                                    del effectsForClips[fiducialId][index]
+                                    break
+                            print "applying ", effectIndex, " effect to clip id ", clipObjs[clipIndex].id, "based on fiducial", obj.id
+                            if not removingReverse:
+                                effectsForClips[fiducialId].append({'func': effectsFunctions[effectIndex],
+                                                                    'effectObjs': [scaledDistance(videoEffectPanel[2], obj)]})
+                            return True
                 elif len(objsInRange) == 2:
                     objIdsInRange = [obj.id for obj in objsInRange]
                     if FIRST_EFFECT_FIDUCIAL + 3 in objIdsInRange and \
@@ -327,13 +334,38 @@ def updateEffects(effectObjs, clipObjs):
                                 break
                         print "applying ", effectIndex, " effect to clip id ", clipObjs[clipIndex].id
                         effectsForClips[fiducialId].append({'func': effectsFunctions[effectIndex],
-                                                            'effectObjs': [videoEffectPanel[1], videoEffectPanel[2], objsInRange[0], objsInRange[1]]})
+                                                            'effectObjs': [scaledDistance(videoEffectPanel[2], objsInRange[0]),scaledDistance(videoEffectPanel[2], objsInRange[1])]})
                         return True
                 # pg.display.flip()
                 print effectsForClips
     return False
 
-def applyEffects(clips, clipObjs, updated=True):
+def applyEffects(clips, clipObjs):
+    # print "effectsForClips:", effectsForClips
+    for clipIndex in range(len(clipObjs)):
+        clipObj = clipObjs[clipIndex]
+        fiducialId = clipObj.id
+        functions = []
+        if fiducialId in effectsForClips:
+            effectArray = effectsForClips[fiducialId]
+            effectIndex = len(effectArray)
+            for entry in effectArray:
+                f = entry['func']
+                functions.append(f)
+                effectObjs = entry['effectObjs']
+                # print f, effectObjs, clips[clipIndex]
+                print clips, clipObjs, effectObjs, clipIndex
+                if f != reverse:
+                    clips[clipIndex] = f(effectObjs, clips[clipIndex])
+                print "applying effect:", f, effectObjs, clipIndex
+
+                effectIndex -= 1
+        if reverse in functions:
+            clips[clipIndex] = reverse(clips[clipIndex])
+        video = clips[clipIndex].get_frame(0)
+        imagesForClips[clipObj.id] = video
+
+def drawEffects(clipObjs):
     # print "effectsForClips:", effectsForClips
     for clipIndex in range(len(clipObjs)):
         clipObj = clipObjs[clipIndex]
@@ -344,10 +376,6 @@ def applyEffects(clips, clipObjs, updated=True):
             for entry in effectArray:
                 f = entry['func']
                 effectObjs = entry['effectObjs']
-                # print f, effectObjs, clips[clipIndex]
-                if updated:
-                    clips[clipIndex] = f(effectObjs, clips[clipIndex])
-                    print "applying effect:", f, effectObjs, clipIndex
 
                 functionIndex = effectsFunctions.index(f)
                 circleSize = int(ONE_INCH / 2 * effectIndex + 2 * ONE_INCH) # one inch for the video radius, one inch for the video border
@@ -357,6 +385,7 @@ def applyEffects(clips, clipObjs, updated=True):
                 #border.draw(win)
 
                 effectIndex -= 1
+
 
 def drawArrow(startx, starty, endx, endy, color=WHITE):
     points = ((startx, starty - 5), (startx, starty + 5), (endx - 20, endy + 5), (endx - 20, endy + 20), (endx, endy), (endx - 20, endy - 20), (endx - 20, endy - 5))
@@ -369,7 +398,7 @@ def imdisplay(imarray, width=VIDEO_WIDTH, height=VIDEO_WIDTH, x=0, y=0):
     a = pg.transform.scale(a, (width, height))
     screen.blit(a, (x, y))
 
-def drawVideoBoxesAndLines(clipObjs, clips, seekObj):
+def drawVideoBoxesAndLines(clipObjs, clips, seekObj=None):
     """draws interface for screen"""
     prevxpos =  -ONE_INCH
     prevypos = CANVAS_HEIGHT / 2.0
@@ -379,11 +408,14 @@ def drawVideoBoxesAndLines(clipObjs, clips, seekObj):
         startxpos = seekObj.xpos
     for i in range(len(clipObjs)):
         obj = clipObjs[i]
-        if clips:
+        if obj.id in imagesForClips:
+            video = imagesForClips[obj.id]
+        elif clips:
             video = clips[i].get_frame(0)
             imagesForClips[obj.id] = video
         else:
-            video = imagesForClips[obj.id]
+            video = noVideoClip
+            imagesForClips[obj.id] = video
         pg.draw.circle(screen, BLACK, (int(obj.xpos * CANVAS_WIDTH), int(obj.ypos * CANVAS_HEIGHT)), int(2 * ONE_INCH)) # one inch for the video radius, one inch for the video border
         imdisplay(video, x=obj.xpos * CANVAS_WIDTH - VIDEO_WIDTH / 2, y=obj.ypos * CANVAS_HEIGHT - VIDEO_WIDTH / 2)
         if obj.xpos < startxpos:
@@ -405,6 +437,8 @@ def drawVideoBoxesAndLines(clipObjs, clips, seekObj):
 
     pg.display.flip() # limit calls to this b/c it takes hella long (refreshes display)
 
+SAVE_FIDUCIAL_ID = 214 if realdeal else 34
+PLAY_FIDUCIAL_ID = 215 if realdeal else 35
 def fetchClips(clipFromPointer=False, objects=None, updated=True):
     importClips()
     try:
@@ -435,7 +469,7 @@ def fetchClips(clipFromPointer=False, objects=None, updated=True):
                     obj.xpos = (obj.xpos + prevObj.xpos) / 2
                     obj.ypos = (obj.ypos + prevObj.ypos) / 2
                     previewObj = obj
-            elif obj.id == 214 or obj.id == 215:
+            elif obj.id == SAVE_FIDUCIAL_ID or obj.id == PLAY_FIDUCIAL_ID:
                 actionObj = obj
             elif obj.id < numEffectsIds + FIRST_EFFECT_FIDUCIAL:
                 effectObjs.append(obj)
@@ -449,21 +483,25 @@ def fetchClips(clipFromPointer=False, objects=None, updated=True):
                     clipObjs.append(obj)
 
         clipObjs = sorted(clipObjs, key=lambda x: x.xpos)
-        updatedEffects = updateEffects(effectObjs, clipObjs)
-        updated = updated or updatedEffects
-        if updated:
+
+        updatedEffects = updateEffects(effectObjs, clipObjs, updated)
+        if updated or updatedEffects or actionObj:
             updateVideoClips(clipObjs, clips)
-        applyEffects(clips, clipObjs, updated)
+            applyEffects(clips, clipObjs)
+
+        drawEffects(clipObjs)
         drawVideoBoxesAndLines(clipObjs, clips, seekObj)
 
-        #when playing, play starting from fiducial 0 if it's on the screen
-        if clipFromPointer and seekObj != None:
-            clips = [clip for obj,clip in zip(clipObjs,clips) if obj.xpos > seekObj.xpos - POINTER_OFFSET]
+        if actionObj:
 
-        #concatenate all clips
-        if len(clips) > 0:
-            print '# clips', len(clips)
-            return clips, previewObj, clipObjs, actionObj
+            #when playing, play starting from fiducial 0 if it's on the screen
+            if clipFromPointer and seekObj != None:
+                clips = [clip for obj,clip in zip(clipObjs,clips) if obj.xpos > seekObj.xpos - POINTER_OFFSET]
+
+            #concatenate all clips
+            if len(clips) > 0:
+                print '# clips', len(clips)
+                return clips, previewObj, clipObjs, actionObj
 
     except KeyboardInterrupt:
         tracking.stop()
@@ -565,24 +603,33 @@ def preview(clips, previewObj, clipObjs):
         playClipAtBlock(clip, previewObj)
 
 def play(clips, previewObj, clipObjs, actionObj):
-    initScreen()
     print clips, previewObj
     if clips != None:
-        pg.draw.circle(screen, WHITE, (int(actionObj.xpos * CANVAS_WIDTH), int(actionObj.ypos * CANVAS_HEIGHT)), ONE_INCH)
+        x = int(actionObj.xpos * CANVAS_WIDTH)
+        y = int(actionObj.ypos * CANVAS_HEIGHT)
+        pg.draw.circle(screen, GREEN, (x, y), ONE_INCH)
+        pg.draw.polygon(screen, WHITE, [(int(x - ONE_INCH *1.73/4), y + ONE_INCH / 2), (int(x - ONE_INCH *1.73/4), y - ONE_INCH / 2), (int(x + ONE_INCH *1.73/3), y)])
         preview(clips, previewObj, clipObjs)
         pg.draw.circle(screen, BLACK, (int(actionObj.xpos * CANVAS_WIDTH), int(actionObj.ypos * CANVAS_HEIGHT)), ONE_INCH)
+        drawEffects(clipObjs)
+        drawVideoBoxesAndLines(clipObjs, clips)
         pg.display.flip()
 
+saveImage = ImageClip("save.png", duration=1.5).get_frame(0)
 def save(clips, previewObj, clipObjs, actionObj):
     if clips != None:
         pg.draw.circle(screen, WHITE, (int(actionObj.xpos * CANVAS_WIDTH), int(actionObj.ypos * CANVAS_HEIGHT)), ONE_INCH)
+        size = ONE_INCH*5/4
+        imdisplay(saveImage, size, size, int(actionObj.xpos * CANVAS_WIDTH) - size/2, int(actionObj.ypos * CANVAS_HEIGHT) - size/2)
         pg.display.flip()
-        time.sleep(0.5)
+        time.sleep(1)
         clip = concatenate(clips)
         #the default video file encodes audio in a way quicktime won't play, so we add these params
         clip.write_videofile("video.mp4", codec="libx264", temp_audiofile='temp-audio.m4a', remove_temp=True, audio_codec='aac')
         pg.draw.circle(screen, BLACK, (int(actionObj.xpos * CANVAS_WIDTH), int(actionObj.ypos * CANVAS_HEIGHT)), ONE_INCH)
-        #pg.display.flip()
+        drawEffects(clipObjs)
+        drawVideoBoxesAndLines(clipObjs, clips)
+        pg.display.flip()
 
 def trackingChanged(one, two):
     for i in range(len(one)):
@@ -593,9 +640,9 @@ def trackingChanged(one, two):
     return False
 
 def doAction(clips, previewObj, clipObjs, actionObj):
-    if actionObj and actionObj.id == 214:
+    if actionObj and actionObj.id == SAVE_FIDUCIAL_ID:
         save(clips, previewObj, clipObjs, actionObj)
-    elif actionObj and actionObj.id == 215:
+    elif actionObj and actionObj.id == PLAY_FIDUCIAL_ID:
         play(clips, previewObj, clipObjs, actionObj)
 
 tracking = tuio.Tracking()
