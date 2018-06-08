@@ -1,5 +1,5 @@
 import imageio
-imageio.plugins.ffmpeg.download()
+#imageio.plugins.ffmpeg.download()
 import threading
 import numpy as np
 import graphics as g
